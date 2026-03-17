@@ -168,7 +168,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
       return;
     }
 
-    debugPrint('クリックした都道府県: $tappedPrefecture');
+    // debugPrint('クリックした都道府県: $tappedPrefecture');
+    //
+    //
+    //
 
     setState(() {
       _selectedPrefectureName = tappedPrefecture;

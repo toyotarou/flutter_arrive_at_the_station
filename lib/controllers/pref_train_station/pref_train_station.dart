@@ -91,9 +91,16 @@ class PrefTrainStation extends _$PrefTrainStation {
           // ignore: avoid_dynamic_calls
           PrefTrainModel val = PrefTrainModel.fromJson(value['data'][i] as Map<String, dynamic>);
 
-          // stationMapにある路線は自動的に並び順・内容を補正
+          // APIの駅名セット
+          final Set<String> apiStationNames = val.station.map((PrefStationModel s) => s.stationName).toSet();
+
           if (stationMap.containsKey(val.trainName)) {
-            val = _correctByStationMap(val: val, smStations: stationMap[val.trainName]!);
+            // stationMapと駅名セットが異なる場合のみ補正（APIデータ優先）
+            final List<StationModel> smStations = stationMap[val.trainName]!;
+            final Set<String> smStationNames = smStations.map((StationModel s) => s.stationName).toSet();
+            if (apiStationNames != smStationNames) {
+              val = _correctByStationMap(val: val, smStations: smStations);
+            }
           } else {
             // stationMapにない路線はrepairTrainNumberで補正
             final List<String> repairNumbers = utility.getRepairTrainNumber(trainName: val.trainName);
@@ -108,7 +115,11 @@ class PrefTrainStation extends _$PrefTrainStation {
                   }
                 }
               }
-              val = _correctByStationMap(val: val, smStations: merged);
+              // repairでも駅名セットが異なる場合のみ補正
+              final Set<String> mergedNames = merged.map((StationModel s) => s.stationName).toSet();
+              if (apiStationNames != mergedNames) {
+                val = _correctByStationMap(val: val, smStations: merged);
+              }
             }
             // repairNumbersが空の路線（上毛電鉄・上越新幹線・北陸新幹線）はprefAPIをそのまま使用
           }

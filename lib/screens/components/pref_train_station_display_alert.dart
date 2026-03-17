@@ -220,11 +220,13 @@ class _PrefTrainStationDisplayAlertState extends ConsumerState<PrefTrainStationD
                                   .map((PrefStationModel s) => LatLng(s.lat, s.lng))
                                   .toList();
 
-                              // DEBUG: 駅の順番を確認
-                              debugPrint('=== ${train.trainName} 駅順 ===');
-                              for (final PrefStationModel s in train.station) {
-                                debugPrint('order:${s.order}  ${s.stationName}  (${s.lat}, ${s.lng})');
-                              }
+                              // // DEBUG: 駅の順番を確認
+                              // debugPrint('=== ${train.trainName} 駅順 ===');
+                              // for (final PrefStationModel s in train.station) {
+                              //   debugPrint('order:${s.order}  ${s.stationName}  (${s.lat}, ${s.lng})');
+                              // }
+                              //
+                              //
                             }
                             _isBoundsActive = false;
                           });
