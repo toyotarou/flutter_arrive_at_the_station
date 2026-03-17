@@ -3,20 +3,24 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../controllers/controllers_mixin.dart';
 import '../utility/utility.dart';
+import 'components/pref_train_station_display_alert.dart';
+import 'parts/arsta_dialog.dart';
 
 ////////////////////////////////////////////////////////////////////////
 
-class HomeScreen extends StatefulWidget {
+class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<HomeScreen> {
   late final Future<List<PrefecturePolygonData>> _future;
 
   // ignore: always_specify_types
@@ -181,7 +185,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final double mapHeight = screenSize.height * 0.5;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('クリックできる日本地図')),
+      appBar: AppBar(title: const Text('駅に着いたら')),
       body: FutureBuilder<List<PrefecturePolygonData>>(
         future: _future,
         builder: (BuildContext context, AsyncSnapshot<List<PrefecturePolygonData>> snapshot) {
@@ -258,6 +262,7 @@ class _HomeScreenState extends State<HomeScreen> {
           return Column(
             children: <Widget>[
               const SizedBox(height: 16),
+
               Center(
                 child: Container(
                   width: mapWidth,
@@ -300,22 +305,54 @@ class _HomeScreenState extends State<HomeScreen> {
 
                       /// 選択中の都道府県名
                       MarkerLayer(markers: selectedLabelMarkers),
+                    ],
+                  ),
+                ),
+              ),
 
-                      const RichAttributionWidget(
-                        attributions: <SourceAttribution>[TextSourceAttribution('OpenStreetMap contributors')],
+              Center(
+                child: SizedBox(
+                  width: mapWidth,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: <Widget>[
+                      const SizedBox.shrink(),
+                      ElevatedButton(
+                        onPressed: () {
+                          setState(() => _selectedPrefectureName = null);
+                        },
+                        child: const Text('clear'),
                       ),
                     ],
                   ),
                 ),
               ),
+
               const SizedBox(height: 16),
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 color: Colors.grey.shade100,
-                child: Text(
-                  _selectedPrefectureName == null ? '都道府県をタップしてください' : '選択中: $_selectedPrefectureName',
-                  style: const TextStyle(fontSize: 16, color: Colors.black),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: <Widget>[
+                    Text(
+                      _selectedPrefectureName == null ? '都道府県を選択してください' : '選択中: $_selectedPrefectureName',
+                      style: const TextStyle(fontSize: 16, color: Colors.black),
+                    ),
+
+                    if (_selectedPrefectureName != null) ...<Widget>[
+                      GestureDetector(
+                        onTap: () {
+                          ArstaDialog(
+                            context: context,
+                            widget: PrefTrainStationDisplayAlert(prefName: _selectedPrefectureName!),
+                          );
+                        },
+                        child: const Icon(Icons.train, color: Colors.black),
+                      ),
+                    ] else ...<Widget>[const SizedBox.shrink()],
+                  ],
                 ),
               ),
             ],
