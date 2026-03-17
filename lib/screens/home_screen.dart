@@ -264,6 +264,24 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
               const SizedBox(height: 16),
 
               Center(
+                child: SizedBox(
+                  width: mapWidth,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: <Widget>[
+                      const SizedBox.shrink(),
+                      ElevatedButton(
+                        onPressed: () {
+                          setState(() => _selectedPrefectureName = null);
+                        },
+                        child: const Text('clear'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              Center(
                 child: Container(
                   width: mapWidth,
                   height: mapHeight,
@@ -305,24 +323,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
 
                       /// 選択中の都道府県名
                       MarkerLayer(markers: selectedLabelMarkers),
-                    ],
-                  ),
-                ),
-              ),
-
-              Center(
-                child: SizedBox(
-                  width: mapWidth,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: <Widget>[
-                      const SizedBox.shrink(),
-                      ElevatedButton(
-                        onPressed: () {
-                          setState(() => _selectedPrefectureName = null);
-                        },
-                        child: const Text('clear'),
-                      ),
                     ],
                   ),
                 ),

@@ -5,6 +5,7 @@ class PrefStationModel {
     required this.address,
     required this.lat,
     required this.lng,
+    required this.order,
   });
 
   factory PrefStationModel.fromJson(Map<String, dynamic> json) {
@@ -14,6 +15,7 @@ class PrefStationModel {
       address: json['address'] as String,
       lat: (json['lat'] as num).toDouble(),
       lng: (json['lng'] as num).toDouble(),
+      order: (json['order'] as num).toInt(),
     );
   }
 
@@ -22,9 +24,17 @@ class PrefStationModel {
   final String address;
   final double lat;
   final double lng;
+  final int order;
 
   Map<String, dynamic> toJson() {
-    return <String, dynamic>{'id': id, 'station_name': stationName, 'address': address, 'lat': lat, 'lng': lng};
+    return <String, dynamic>{
+      'id': id,
+      'station_name': stationName,
+      'address': address,
+      'lat': lat,
+      'lng': lng,
+      'order': order,
+    };
   }
 }
 
@@ -36,8 +46,8 @@ class PrefTrainModel {
     return PrefTrainModel(
       trainNumber: json['train_number'] as int,
       trainName: json['train_name'] as String,
-      // ignore: always_specify_types
-      station: list.map((e) => PrefStationModel.fromJson(e as Map<String, dynamic>)).toList(),
+      station: (list.map((e) => PrefStationModel.fromJson(e as Map<String, dynamic>)).toList()
+        ..sort((PrefStationModel a, PrefStationModel b) => a.order.compareTo(b.order))),
     );
   }
 

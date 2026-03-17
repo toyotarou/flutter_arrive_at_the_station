@@ -22,6 +22,9 @@ class _PrefTrainStationDisplayAlertState extends ConsumerState<PrefTrainStationD
     with ControllersMixin<PrefTrainStationDisplayAlert> {
   List<LatLng> _polylinePoints = <LatLng>[];
   String? _selectedTrainName;
+  List<List<LatLng>> _prefPolygons = <List<LatLng>>[];
+  final MapController _mapController = MapController();
+  bool _isBoundsActive = false;
 
   ///
   @override
@@ -30,6 +33,36 @@ class _PrefTrainStationDisplayAlertState extends ConsumerState<PrefTrainStationD
     WidgetsBinding.instance.addPostFrameCallback((_) {
       prefTrainNotifier.getPrefTrainStation(prefName: widget.prefName);
     });
+    _loadPrefPolygons();
+  }
+
+  ///
+  Future<void> _loadPrefPolygons() async {
+    final List<List<LatLng>> polygons = await loadFilteredPrefPolygons(widget.prefName);
+    if (mounted) setState(() => _prefPolygons = polygons);
+  }
+
+  /// レイキャスティング法で点がポリゴン群の内側かどうかを判定
+  bool _isInsidePref(PrefStationModel s) {
+    final LatLng point = LatLng(s.lat, s.lng);
+    for (final List<LatLng> ring in _prefPolygons) {
+      if (_pointInPolygon(point, ring)) return true;
+    }
+    return false;
+  }
+
+  bool _pointInPolygon(LatLng point, List<LatLng> polygon) {
+    bool inside = false;
+    int j = polygon.length - 1;
+    for (int i = 0; i < polygon.length; j = i++) {
+      final double xi = polygon[i].longitude, yi = polygon[i].latitude;
+      final double xj = polygon[j].longitude, yj = polygon[j].latitude;
+      if (((yi > point.latitude) != (yj > point.latitude)) &&
+          (point.longitude < (xj - xi) * (point.latitude - yi) / (yj - yi) + xi)) {
+        inside = !inside;
+      }
+    }
+    return inside;
   }
 
   ///
@@ -57,7 +90,11 @@ class _PrefTrainStationDisplayAlertState extends ConsumerState<PrefTrainStationD
                   child: Stack(
                     children: <Widget>[
                       Positioned.fill(
-                        child: PrefectureMapWidget(prefName: widget.prefName, polylinePoints: _polylinePoints),
+                        child: PrefectureMapWidget(
+                          prefName: widget.prefName,
+                          polylinePoints: _polylinePoints,
+                          mapController: _mapController,
+                        ),
                       ),
                       displayPrefTrainList(),
                     ],
@@ -101,29 +138,128 @@ class _PrefTrainStationDisplayAlertState extends ConsumerState<PrefTrainStationD
                     child: Text(train.trainName, style: const TextStyle(fontWeight: FontWeight.bold)),
                   ),
 
-                  GestureDetector(
-                    onTap: () {
-                      setState(() {
-                        if (_selectedTrainName == train.trainName) {
-                          _selectedTrainName = null;
-                          _polylinePoints = <LatLng>[];
-                        } else {
-                          _selectedTrainName = train.trainName;
-                          _polylinePoints = train.station.map((PrefStationModel s) => LatLng(s.lat, s.lng)).toList();
-                        }
-                      });
-                    },
-                    child: Icon(
-                      Icons.stacked_line_chart,
-                      color: _selectedTrainName == train.trainName ? Colors.yellow : null,
-                    ),
+                  Row(
+                    children: [
+                      if (_selectedTrainName != null) ...[
+                        GestureDetector(
+                          onTap: () {
+                            if (_isBoundsActive) {
+                              // 解除 → 都道府県にリセット
+                              setState(() => _isBoundsActive = false);
+                              if (_prefPolygons.isNotEmpty) {
+                                final List<LatLng> allPrefPoints = _prefPolygons
+                                    .expand((List<LatLng> ring) => ring)
+                                    .toList();
+                                final double minLat = allPrefPoints
+                                    .map((LatLng p) => p.latitude)
+                                    .reduce((a, b) => a < b ? a : b);
+                                final double maxLat = allPrefPoints
+                                    .map((LatLng p) => p.latitude)
+                                    .reduce((a, b) => a > b ? a : b);
+                                final double minLng = allPrefPoints
+                                    .map((LatLng p) => p.longitude)
+                                    .reduce((a, b) => a < b ? a : b);
+                                final double maxLng = allPrefPoints
+                                    .map((LatLng p) => p.longitude)
+                                    .reduce((a, b) => a > b ? a : b);
+                                _mapController.fitCamera(
+                                  CameraFit.bounds(
+                                    bounds: LatLngBounds(LatLng(minLat, minLng), LatLng(maxLat, maxLng)),
+                                    padding: const EdgeInsets.all(24),
+                                  ),
+                                );
+                              }
+                            } else {
+                              // バウンズ表示
+                              if (_polylinePoints.isEmpty) return;
+                              setState(() => _isBoundsActive = true);
+                              final double minLat = _polylinePoints
+                                  .map((LatLng p) => p.latitude)
+                                  .reduce((a, b) => a < b ? a : b);
+                              final double maxLat = _polylinePoints
+                                  .map((LatLng p) => p.latitude)
+                                  .reduce((a, b) => a > b ? a : b);
+                              final double minLng = _polylinePoints
+                                  .map((LatLng p) => p.longitude)
+                                  .reduce((a, b) => a < b ? a : b);
+                              final double maxLng = _polylinePoints
+                                  .map((LatLng p) => p.longitude)
+                                  .reduce((a, b) => a > b ? a : b);
+                              _mapController.fitCamera(
+                                CameraFit.bounds(
+                                  bounds: LatLngBounds(LatLng(minLat, minLng), LatLng(maxLat, maxLng)),
+                                  padding: const EdgeInsets.all(24),
+                                ),
+                              );
+                            }
+                          },
+                          child: Icon(Icons.pages, color: _isBoundsActive ? Colors.yellow : null),
+                        ),
+
+                        const SizedBox(width: 20),
+                      ],
+
+                      GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            if (_selectedTrainName == train.trainName) {
+                              _selectedTrainName = null;
+                              _polylinePoints = <LatLng>[];
+                            } else {
+                              _selectedTrainName = train.trainName;
+                              _polylinePoints = train.station
+                                  .map((PrefStationModel s) => LatLng(s.lat, s.lng))
+                                  .toList();
+
+                              // DEBUG: 駅の順番を確認
+                              debugPrint('=== ${train.trainName} 駅順 ===');
+                              for (final PrefStationModel s in train.station) {
+                                debugPrint('order:${s.order}  ${s.stationName}  (${s.lat}, ${s.lng})');
+                              }
+                            }
+                            _isBoundsActive = false;
+                          });
+
+                          // 別の電車に切り替えた時（または解除時）は白塗り都道府県が中心に来るようにリセット
+                          if (_prefPolygons.isNotEmpty) {
+                            final List<LatLng> allPrefPoints = _prefPolygons
+                                .expand((List<LatLng> ring) => ring)
+                                .toList();
+                            final double minLat = allPrefPoints
+                                .map((LatLng p) => p.latitude)
+                                .reduce((a, b) => a < b ? a : b);
+                            final double maxLat = allPrefPoints
+                                .map((LatLng p) => p.latitude)
+                                .reduce((a, b) => a > b ? a : b);
+                            final double minLng = allPrefPoints
+                                .map((LatLng p) => p.longitude)
+                                .reduce((a, b) => a < b ? a : b);
+                            final double maxLng = allPrefPoints
+                                .map((LatLng p) => p.longitude)
+                                .reduce((a, b) => a > b ? a : b);
+                            _mapController.fitCamera(
+                              CameraFit.bounds(
+                                bounds: LatLngBounds(LatLng(minLat, minLng), LatLng(maxLat, maxLng)),
+                                padding: const EdgeInsets.all(24),
+                              ),
+                            );
+                          }
+                        },
+                        child: Icon(
+                          Icons.stacked_line_chart,
+                          color: _selectedTrainName == train.trainName ? Colors.yellow : null,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
             ),
             ...train.station.map(
-              (PrefStationModel s) =>
-                  Padding(padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4), child: Text(s.stationName)),
+              (PrefStationModel s) => Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
+                child: Text(s.stationName, style: TextStyle(color: _isInsidePref(s) ? Colors.white : Colors.grey)),
+              ),
             ),
           ],
         );
@@ -134,11 +270,83 @@ class _PrefTrainStationDisplayAlertState extends ConsumerState<PrefTrainStationD
 
 ////////////////////////////////////////////////////////////////////////
 
+/// 都道府県ポリゴンをJSONから読み込み、離島フィルタを適用して返す
+Future<List<List<LatLng>>> loadFilteredPrefPolygons(String prefName) async {
+  final String jsonString = await rootBundle.loadString('assets/json/japan_pref.json');
+  final Map<String, dynamic> jsonMap = json.decode(jsonString) as Map<String, dynamic>;
+  final List<dynamic> features = jsonMap['features'] as List<dynamic>? ?? <dynamic>[];
+
+  final List<List<LatLng>> allRings = <List<LatLng>>[];
+
+  for (final dynamic feature in features) {
+    if (feature is! Map<String, dynamic>) continue;
+
+    final Map<String, dynamic> properties = feature['properties'] as Map<String, dynamic>? ?? <String, dynamic>{};
+    final String name = (properties['N03_001']?.toString() ?? '').trim();
+    if (name != prefName) continue;
+
+    final Map<String, dynamic> geometry = feature['geometry'] as Map<String, dynamic>? ?? <String, dynamic>{};
+    final String type = geometry['type']?.toString() ?? '';
+    final dynamic coordinates = geometry['coordinates'];
+    if (coordinates == null) continue;
+
+    if (type == 'Polygon') {
+      allRings.add(_toLatLngListGlobal((coordinates as List<dynamic>).first as List<dynamic>));
+    } else if (type == 'MultiPolygon') {
+      for (final dynamic polygon in coordinates as List<dynamic>) {
+        allRings.add(_toLatLngListGlobal((polygon as List<dynamic>).first as List<dynamic>));
+      }
+    }
+  }
+
+  if (allRings.length > 1) {
+    double bboxArea(List<LatLng> ring) {
+      final double minLat = ring.map((LatLng p) => p.latitude).reduce((a, b) => a < b ? a : b);
+      final double maxLat = ring.map((LatLng p) => p.latitude).reduce((a, b) => a > b ? a : b);
+      final double minLng = ring.map((LatLng p) => p.longitude).reduce((a, b) => a < b ? a : b);
+      final double maxLng = ring.map((LatLng p) => p.longitude).reduce((a, b) => a > b ? a : b);
+      return (maxLat - minLat) * (maxLng - minLng);
+    }
+
+    final List<LatLng> largestRing = allRings.reduce((a, b) => bboxArea(a) >= bboxArea(b) ? a : b);
+    final double minLat = largestRing.map((p) => p.latitude).reduce((a, b) => a < b ? a : b);
+    final double maxLat = largestRing.map((p) => p.latitude).reduce((a, b) => a > b ? a : b);
+    final double minLng = largestRing.map((p) => p.longitude).reduce((a, b) => a < b ? a : b);
+    final double maxLng = largestRing.map((p) => p.longitude).reduce((a, b) => a > b ? a : b);
+    final double mainLat = (minLat + maxLat) / 2;
+    final double mainLng = (minLng + maxLng) / 2;
+
+    allRings.removeWhere((List<LatLng> ring) {
+      final double centLat = ring.map((p) => p.latitude).reduce((a, b) => a + b) / ring.length;
+      final double centLng = ring.map((p) => p.longitude).reduce((a, b) => a + b) / ring.length;
+      final double distSq = (centLat - mainLat) * (centLat - mainLat) + (centLng - mainLng) * (centLng - mainLng);
+      return distSq > 0.9 * 0.9;
+    });
+  }
+
+  return allRings;
+}
+
+List<LatLng> _toLatLngListGlobal(List<dynamic> ring) {
+  return ring.map((dynamic p) {
+    final List<dynamic> point = p as List<dynamic>;
+    return LatLng((point[1] as num).toDouble(), (point[0] as num).toDouble());
+  }).toList();
+}
+
+////////////////////////////////////////////////////////////////////////
+
 class PrefectureMapWidget extends StatefulWidget {
-  const PrefectureMapWidget({super.key, required this.prefName, required this.polylinePoints});
+  const PrefectureMapWidget({
+    super.key,
+    required this.prefName,
+    required this.polylinePoints,
+    required this.mapController,
+  });
 
   final String prefName;
   final List<LatLng> polylinePoints;
+  final MapController mapController;
 
   @override
   State<PrefectureMapWidget> createState() => _PrefectureMapWidgetState();
@@ -150,76 +358,7 @@ class _PrefectureMapWidgetState extends State<PrefectureMapWidget> {
   @override
   void initState() {
     super.initState();
-    _future = _loadPolygons();
-  }
-
-  Future<List<List<LatLng>>> _loadPolygons() async {
-    final String jsonString = await rootBundle.loadString('assets/json/japan_pref.json');
-    final Map<String, dynamic> jsonMap = json.decode(jsonString) as Map<String, dynamic>;
-    final List<dynamic> features = jsonMap['features'] as List<dynamic>? ?? <dynamic>[];
-
-    final List<List<LatLng>> allRings = <List<LatLng>>[];
-
-    for (final dynamic feature in features) {
-      if (feature is! Map<String, dynamic>) continue;
-
-      final Map<String, dynamic> properties = feature['properties'] as Map<String, dynamic>? ?? <String, dynamic>{};
-      final String name = (properties['N03_001']?.toString() ?? '').trim();
-      if (name != widget.prefName) continue;
-
-      final Map<String, dynamic> geometry = feature['geometry'] as Map<String, dynamic>? ?? <String, dynamic>{};
-      final String type = geometry['type']?.toString() ?? '';
-      final dynamic coordinates = geometry['coordinates'];
-      if (coordinates == null) continue;
-
-      if (type == 'Polygon') {
-        final List<dynamic> rings = coordinates as List<dynamic>;
-        allRings.add(_toLatLngList(rings.first as List<dynamic>));
-      } else if (type == 'MultiPolygon') {
-        for (final dynamic polygon in coordinates as List<dynamic>) {
-          final List<dynamic> rings = polygon as List<dynamic>;
-          allRings.add(_toLatLngList(rings.first as List<dynamic>));
-        }
-      }
-    }
-
-    // 離島除去: 最大リング（バウンディングボックス面積が最大）の中心から 0.9度以上離れたリングを除外
-    if (allRings.length > 1) {
-      double _bboxArea(List<LatLng> ring) {
-        final double minLat = ring.map((LatLng p) => p.latitude).reduce((double a, double b) => a < b ? a : b);
-        final double maxLat = ring.map((LatLng p) => p.latitude).reduce((double a, double b) => a > b ? a : b);
-        final double minLng = ring.map((LatLng p) => p.longitude).reduce((double a, double b) => a < b ? a : b);
-        final double maxLng = ring.map((LatLng p) => p.longitude).reduce((double a, double b) => a > b ? a : b);
-        return (maxLat - minLat) * (maxLng - minLng);
-      }
-
-      final List<LatLng> largestRing = allRings.reduce(
-        (List<LatLng> a, List<LatLng> b) => _bboxArea(a) >= _bboxArea(b) ? a : b,
-      );
-
-      final double minLat = largestRing.map((LatLng p) => p.latitude).reduce((double a, double b) => a < b ? a : b);
-      final double maxLat = largestRing.map((LatLng p) => p.latitude).reduce((double a, double b) => a > b ? a : b);
-      final double minLng = largestRing.map((LatLng p) => p.longitude).reduce((double a, double b) => a < b ? a : b);
-      final double maxLng = largestRing.map((LatLng p) => p.longitude).reduce((double a, double b) => a > b ? a : b);
-      final double mainLat = (minLat + maxLat) / 2;
-      final double mainLng = (minLng + maxLng) / 2;
-
-      allRings.removeWhere((List<LatLng> ring) {
-        final double centLat = ring.map((LatLng p) => p.latitude).reduce((double a, double b) => a + b) / ring.length;
-        final double centLng = ring.map((LatLng p) => p.longitude).reduce((double a, double b) => a + b) / ring.length;
-        final double distSq = (centLat - mainLat) * (centLat - mainLat) + (centLng - mainLng) * (centLng - mainLng);
-        return distSq > 0.9 * 0.9;
-      });
-    }
-
-    return allRings;
-  }
-
-  List<LatLng> _toLatLngList(List<dynamic> ring) {
-    return ring.map((dynamic p) {
-      final List<dynamic> point = p as List<dynamic>;
-      return LatLng((point[1] as num).toDouble(), (point[0] as num).toDouble());
-    }).toList();
+    _future = loadFilteredPrefPolygons(widget.prefName);
   }
 
   @override
@@ -259,6 +398,7 @@ class _PrefectureMapWidgetState extends State<PrefectureMapWidget> {
         );
 
         return FlutterMap(
+          mapController: widget.mapController,
           options: MapOptions(
             initialCameraFit: CameraFit.bounds(
               bounds: LatLngBounds(LatLng(minLat, minLng), LatLng(maxLat, maxLng)),

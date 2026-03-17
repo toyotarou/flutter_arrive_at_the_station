@@ -41,12 +41,70 @@ class PrefTrainStation extends _$PrefTrainStation {
       final Map<String, PrefTrainModel> map = <String, PrefTrainModel>{};
       final Map<String, List<PrefTrainModel>> map2 = <String, List<PrefTrainModel>>{};
 
+      // 駅単位の修正データをパース: "prefName;trainName;order;stationName;lat;lng"
+      final List<List<String>> repairStationEntries = utility
+          .mapWrongInfoRepairStationValue()
+          .map((String s) => s.split(';'))
+          .where((List<String> parts) => parts.length == 6 && parts[0] == prefName)
+          .toList();
+
+      // 路線丸ごと入れ替えデータをパース & trainNameでグループ化
+      final Map<String, List<PrefStationModel>> repairLineMap = <String, List<PrefStationModel>>{};
+      for (final String raw in utility.mapWrongInfoRepairLineValue()) {
+        final List<String> p = raw.split(';');
+        if (p.length != 6 || p[0] != prefName) continue;
+        final String trainName = p[1];
+        (repairLineMap[trainName] ??= <PrefStationModel>[]).add(
+          PrefStationModel(
+            id: 'repair-line-${p[2]}',
+            stationName: p[3],
+            address: '',
+            lat: double.parse(p[4]),
+            lng: double.parse(p[5]),
+            order: int.parse(p[2]),
+          ),
+        );
+      }
+
       // ignore: always_specify_types
       await client.post(path: APIPath.getPrefTrainStation, body: {'pref': prefName}).then((value) {
         // ignore: avoid_dynamic_calls
         for (int i = 0; i < value['data'].length.toString().toInt(); i++) {
           // ignore: avoid_dynamic_calls
-          final PrefTrainModel val = PrefTrainModel.fromJson(value['data'][i] as Map<String, dynamic>);
+          PrefTrainModel val = PrefTrainModel.fromJson(value['data'][i] as Map<String, dynamic>);
+
+          // 路線丸ごと入れ替え（repairLineMapが優先）
+          if (repairLineMap.containsKey(val.trainName)) {
+            final List<PrefStationModel> stations = List<PrefStationModel>.from(repairLineMap[val.trainName]!)
+              ..sort((PrefStationModel a, PrefStationModel b) => a.order.compareTo(b.order));
+            val = PrefTrainModel(trainNumber: val.trainNumber, trainName: val.trainName, station: stations);
+          } else {
+            // 駅単位の修正を適用
+            final List<List<String>> matched =
+                repairStationEntries.where((List<String> p) => p[1] == val.trainName).toList();
+            if (matched.isNotEmpty) {
+              final List<PrefStationModel> stations = List<PrefStationModel>.from(val.station);
+              for (final List<String> p in matched) {
+                final int repairOrder = int.parse(p[2]);
+                final PrefStationModel repairStation = PrefStationModel(
+                  id: 'repair-$repairOrder',
+                  stationName: p[3],
+                  address: '',
+                  lat: double.parse(p[4]),
+                  lng: double.parse(p[5]),
+                  order: repairOrder,
+                );
+                final int existingIndex = stations.indexWhere((PrefStationModel s) => s.order == repairOrder);
+                if (existingIndex >= 0) {
+                  stations[existingIndex] = repairStation;
+                } else {
+                  stations.add(repairStation);
+                }
+              }
+              stations.sort((PrefStationModel a, PrefStationModel b) => a.order.compareTo(b.order));
+              val = PrefTrainModel(trainNumber: val.trainNumber, trainName: val.trainName, station: stations);
+            }
+          }
 
           list.add(val);
 
