@@ -7,7 +7,7 @@ import 'package:http/http.dart';
 import 'path.dart';
 
 ///////////////////////////////////////////////////////////////////
-final Provider<HttpClient> httpClientProvider = Provider<HttpClient>((ref) => HttpClient());
+final Provider<HttpClient> httpClientProvider = Provider<HttpClient>((ProviderRef<HttpClient> ref) => HttpClient());
 
 ////////////////////
 class HttpClient {
