@@ -39,14 +39,18 @@ class _PrefTrainStationDisplayAlertState extends ConsumerState<PrefTrainStationD
   ///
   Future<void> _loadPrefPolygons() async {
     final List<List<LatLng>> polygons = await loadFilteredPrefPolygons(widget.prefName);
-    if (mounted) setState(() => _prefPolygons = polygons);
+    if (mounted) {
+      setState(() => _prefPolygons = polygons);
+    }
   }
 
   /// レイキャスティング法で点がポリゴン群の内側かどうかを判定
   bool _isInsidePref(PrefStationModel s) {
     final LatLng point = LatLng(s.lat, s.lng);
     for (final List<LatLng> ring in _prefPolygons) {
-      if (_pointInPolygon(point, ring)) return true;
+      if (_pointInPolygon(point, ring)) {
+        return true;
+      }
     }
     return false;
   }
@@ -133,14 +137,14 @@ class _PrefTrainStationDisplayAlertState extends ConsumerState<PrefTrainStationD
               color: Colors.white.withOpacity(0.2),
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               child: Row(
-                children: [
+                children: <Widget>[
                   Expanded(
                     child: Text(train.trainName, style: const TextStyle(fontWeight: FontWeight.bold)),
                   ),
 
                   Row(
-                    children: [
-                      if (_selectedTrainName != null) ...[
+                    children: <Widget>[
+                      if (_selectedTrainName != null) ...<Widget>[
                         GestureDetector(
                           onTap: () {
                             if (_isBoundsActive) {
@@ -152,16 +156,16 @@ class _PrefTrainStationDisplayAlertState extends ConsumerState<PrefTrainStationD
                                     .toList();
                                 final double minLat = allPrefPoints
                                     .map((LatLng p) => p.latitude)
-                                    .reduce((a, b) => a < b ? a : b);
+                                    .reduce((double a, double b) => a < b ? a : b);
                                 final double maxLat = allPrefPoints
                                     .map((LatLng p) => p.latitude)
-                                    .reduce((a, b) => a > b ? a : b);
+                                    .reduce((double a, double b) => a > b ? a : b);
                                 final double minLng = allPrefPoints
                                     .map((LatLng p) => p.longitude)
-                                    .reduce((a, b) => a < b ? a : b);
+                                    .reduce((double a, double b) => a < b ? a : b);
                                 final double maxLng = allPrefPoints
                                     .map((LatLng p) => p.longitude)
-                                    .reduce((a, b) => a > b ? a : b);
+                                    .reduce((double a, double b) => a > b ? a : b);
                                 _mapController.fitCamera(
                                   CameraFit.bounds(
                                     bounds: LatLngBounds(LatLng(minLat, minLng), LatLng(maxLat, maxLng)),
@@ -171,20 +175,22 @@ class _PrefTrainStationDisplayAlertState extends ConsumerState<PrefTrainStationD
                               }
                             } else {
                               // バウンズ表示
-                              if (_polylinePoints.isEmpty) return;
+                              if (_polylinePoints.isEmpty) {
+                                return;
+                              }
                               setState(() => _isBoundsActive = true);
                               final double minLat = _polylinePoints
                                   .map((LatLng p) => p.latitude)
-                                  .reduce((a, b) => a < b ? a : b);
+                                  .reduce((double a, double b) => a < b ? a : b);
                               final double maxLat = _polylinePoints
                                   .map((LatLng p) => p.latitude)
-                                  .reduce((a, b) => a > b ? a : b);
+                                  .reduce((double a, double b) => a > b ? a : b);
                               final double minLng = _polylinePoints
                                   .map((LatLng p) => p.longitude)
-                                  .reduce((a, b) => a < b ? a : b);
+                                  .reduce((double a, double b) => a < b ? a : b);
                               final double maxLng = _polylinePoints
                                   .map((LatLng p) => p.longitude)
-                                  .reduce((a, b) => a > b ? a : b);
+                                  .reduce((double a, double b) => a > b ? a : b);
                               _mapController.fitCamera(
                                 CameraFit.bounds(
                                   bounds: LatLngBounds(LatLng(minLat, minLng), LatLng(maxLat, maxLng)),
@@ -227,16 +233,16 @@ class _PrefTrainStationDisplayAlertState extends ConsumerState<PrefTrainStationD
                                 .toList();
                             final double minLat = allPrefPoints
                                 .map((LatLng p) => p.latitude)
-                                .reduce((a, b) => a < b ? a : b);
+                                .reduce((double a, double b) => a < b ? a : b);
                             final double maxLat = allPrefPoints
                                 .map((LatLng p) => p.latitude)
-                                .reduce((a, b) => a > b ? a : b);
+                                .reduce((double a, double b) => a > b ? a : b);
                             final double minLng = allPrefPoints
                                 .map((LatLng p) => p.longitude)
-                                .reduce((a, b) => a < b ? a : b);
+                                .reduce((double a, double b) => a < b ? a : b);
                             final double maxLng = allPrefPoints
                                 .map((LatLng p) => p.longitude)
-                                .reduce((a, b) => a > b ? a : b);
+                                .reduce((double a, double b) => a > b ? a : b);
                             _mapController.fitCamera(
                               CameraFit.bounds(
                                 bounds: LatLngBounds(LatLng(minLat, minLng), LatLng(maxLat, maxLng)),
@@ -279,16 +285,22 @@ Future<List<List<LatLng>>> loadFilteredPrefPolygons(String prefName) async {
   final List<List<LatLng>> allRings = <List<LatLng>>[];
 
   for (final dynamic feature in features) {
-    if (feature is! Map<String, dynamic>) continue;
+    if (feature is! Map<String, dynamic>) {
+      continue;
+    }
 
     final Map<String, dynamic> properties = feature['properties'] as Map<String, dynamic>? ?? <String, dynamic>{};
     final String name = (properties['N03_001']?.toString() ?? '').trim();
-    if (name != prefName) continue;
+    if (name != prefName) {
+      continue;
+    }
 
     final Map<String, dynamic> geometry = feature['geometry'] as Map<String, dynamic>? ?? <String, dynamic>{};
     final String type = geometry['type']?.toString() ?? '';
     final dynamic coordinates = geometry['coordinates'];
-    if (coordinates == null) continue;
+    if (coordinates == null) {
+      continue;
+    }
 
     if (type == 'Polygon') {
       allRings.add(_toLatLngListGlobal((coordinates as List<dynamic>).first as List<dynamic>));
@@ -301,24 +313,26 @@ Future<List<List<LatLng>>> loadFilteredPrefPolygons(String prefName) async {
 
   if (allRings.length > 1) {
     double bboxArea(List<LatLng> ring) {
-      final double minLat = ring.map((LatLng p) => p.latitude).reduce((a, b) => a < b ? a : b);
-      final double maxLat = ring.map((LatLng p) => p.latitude).reduce((a, b) => a > b ? a : b);
-      final double minLng = ring.map((LatLng p) => p.longitude).reduce((a, b) => a < b ? a : b);
-      final double maxLng = ring.map((LatLng p) => p.longitude).reduce((a, b) => a > b ? a : b);
+      final double minLat = ring.map((LatLng p) => p.latitude).reduce((double a, double b) => a < b ? a : b);
+      final double maxLat = ring.map((LatLng p) => p.latitude).reduce((double a, double b) => a > b ? a : b);
+      final double minLng = ring.map((LatLng p) => p.longitude).reduce((double a, double b) => a < b ? a : b);
+      final double maxLng = ring.map((LatLng p) => p.longitude).reduce((double a, double b) => a > b ? a : b);
       return (maxLat - minLat) * (maxLng - minLng);
     }
 
-    final List<LatLng> largestRing = allRings.reduce((a, b) => bboxArea(a) >= bboxArea(b) ? a : b);
-    final double minLat = largestRing.map((p) => p.latitude).reduce((a, b) => a < b ? a : b);
-    final double maxLat = largestRing.map((p) => p.latitude).reduce((a, b) => a > b ? a : b);
-    final double minLng = largestRing.map((p) => p.longitude).reduce((a, b) => a < b ? a : b);
-    final double maxLng = largestRing.map((p) => p.longitude).reduce((a, b) => a > b ? a : b);
+    final List<LatLng> largestRing = allRings.reduce(
+      (List<LatLng> a, List<LatLng> b) => bboxArea(a) >= bboxArea(b) ? a : b,
+    );
+    final double minLat = largestRing.map((LatLng p) => p.latitude).reduce((double a, double b) => a < b ? a : b);
+    final double maxLat = largestRing.map((LatLng p) => p.latitude).reduce((double a, double b) => a > b ? a : b);
+    final double minLng = largestRing.map((LatLng p) => p.longitude).reduce((double a, double b) => a < b ? a : b);
+    final double maxLng = largestRing.map((LatLng p) => p.longitude).reduce((double a, double b) => a > b ? a : b);
     final double mainLat = (minLat + maxLat) / 2;
     final double mainLng = (minLng + maxLng) / 2;
 
     allRings.removeWhere((List<LatLng> ring) {
-      final double centLat = ring.map((p) => p.latitude).reduce((a, b) => a + b) / ring.length;
-      final double centLng = ring.map((p) => p.longitude).reduce((a, b) => a + b) / ring.length;
+      final double centLat = ring.map((LatLng p) => p.latitude).reduce((double a, double b) => a + b) / ring.length;
+      final double centLng = ring.map((LatLng p) => p.longitude).reduce((double a, double b) => a + b) / ring.length;
       final double distSq = (centLat - mainLat) * (centLat - mainLat) + (centLng - mainLng) * (centLng - mainLng);
       return distSq > 0.9 * 0.9;
     });
@@ -377,10 +391,18 @@ class _PrefectureMapWidgetState extends State<PrefectureMapWidget> {
         double minLng = double.infinity, maxLng = -double.infinity;
         for (final List<LatLng> ring in allRings) {
           for (final LatLng p in ring) {
-            if (p.latitude < minLat) minLat = p.latitude;
-            if (p.latitude > maxLat) maxLat = p.latitude;
-            if (p.longitude < minLng) minLng = p.longitude;
-            if (p.longitude > maxLng) maxLng = p.longitude;
+            if (p.latitude < minLat) {
+              minLat = p.latitude;
+            }
+            if (p.latitude > maxLat) {
+              maxLat = p.latitude;
+            }
+            if (p.longitude < minLng) {
+              minLng = p.longitude;
+            }
+            if (p.longitude > maxLng) {
+              maxLng = p.longitude;
+            }
           }
         }
 

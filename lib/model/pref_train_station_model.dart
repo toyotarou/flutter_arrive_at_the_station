@@ -46,6 +46,7 @@ class PrefTrainModel {
     return PrefTrainModel(
       trainNumber: json['train_number'] as int,
       trainName: json['train_name'] as String,
+      // ignore: always_specify_types
       station: (list.map((e) => PrefStationModel.fromJson(e as Map<String, dynamic>)).toList()
         ..sort((PrefStationModel a, PrefStationModel b) => a.order.compareTo(b.order))),
     );

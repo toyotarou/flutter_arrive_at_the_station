@@ -5,6 +5,8 @@ import '../../data/http/client.dart';
 import '../../data/http/path.dart';
 import '../../extensions/extensions.dart';
 import '../../model/pref_train_station_model.dart';
+import '../../model/station_model.dart';
+import '../../model/train_model.dart';
 import '../../utility/utility.dart';
 
 part 'pref_train_station.freezed.dart';
@@ -37,6 +39,44 @@ class PrefTrainStation extends _$PrefTrainStation {
     final HttpClient client = ref.read(httpClientProvider);
 
     try {
+      //================================================//
+
+      final Map<String, String> trainMap = <String, String>{};
+
+      // ignore: always_specify_types
+      await client.post(path: APIPath.getTrain).then((value) {
+        // ignore: avoid_dynamic_calls
+        for (int i = 0; i < value['data'].length.toString().toInt(); i++) {
+          // ignore: avoid_dynamic_calls
+          final TrainModel val = TrainModel.fromJson(value['data'][i] as Map<String, dynamic>);
+
+          trainMap[val.trainNumber] = val.trainName;
+        }
+      });
+
+      //================================================//
+
+      //================================================//
+
+      final Map<String, List<StationModel>> stationMap = <String, List<StationModel>>{};
+
+      // ignore: always_specify_types
+      await client.post(path: APIPath.getAllStation).then((value) {
+        // ignore: avoid_dynamic_calls
+        for (int i = 0; i < value['data'].length.toString().toInt(); i++) {
+          // ignore: avoid_dynamic_calls
+          final StationModel val = StationModel.fromJson(value['data'][i] as Map<String, dynamic>);
+
+          final String? trainName = trainMap[val.lineNumber];
+
+          if (trainName != null) {
+            (stationMap[trainName] ??= <StationModel>[]).add(val);
+          }
+        }
+      });
+
+      //================================================//
+
       final List<PrefTrainModel> list = <PrefTrainModel>[];
       final Map<String, PrefTrainModel> map = <String, PrefTrainModel>{};
       final Map<String, List<PrefTrainModel>> map2 = <String, List<PrefTrainModel>>{};
@@ -52,7 +92,9 @@ class PrefTrainStation extends _$PrefTrainStation {
       final Map<String, List<PrefStationModel>> repairLineMap = <String, List<PrefStationModel>>{};
       for (final String raw in utility.mapWrongInfoRepairLineValue()) {
         final List<String> p = raw.split(';');
-        if (p.length != 6 || p[0] != prefName) continue;
+        if (p.length != 6 || p[0] != prefName) {
+          continue;
+        }
         final String trainName = p[1];
         (repairLineMap[trainName] ??= <PrefStationModel>[]).add(
           PrefStationModel(
@@ -80,8 +122,9 @@ class PrefTrainStation extends _$PrefTrainStation {
             val = PrefTrainModel(trainNumber: val.trainNumber, trainName: val.trainName, station: stations);
           } else {
             // 駅単位の修正を適用
-            final List<List<String>> matched =
-                repairStationEntries.where((List<String> p) => p[1] == val.trainName).toList();
+            final List<List<String>> matched = repairStationEntries
+                .where((List<String> p) => p[1] == val.trainName)
+                .toList();
             if (matched.isNotEmpty) {
               final List<PrefStationModel> stations = List<PrefStationModel>.from(val.station);
               for (final List<String> p in matched) {
