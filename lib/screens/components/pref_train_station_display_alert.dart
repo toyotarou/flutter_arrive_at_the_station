@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 
 import '../../controllers/controllers_mixin.dart';
 import '../../model/pref_train_station_model.dart';
@@ -25,6 +26,8 @@ class _PrefTrainStationDisplayAlertState extends ConsumerState<PrefTrainStationD
   List<List<LatLng>> _prefPolygons = <List<LatLng>>[];
   final MapController _mapController = MapController();
   bool _isBoundsActive = false;
+  final TextEditingController _searchController = TextEditingController();
+  final ItemScrollController _itemScrollController = ItemScrollController();
 
   ///
   @override
@@ -34,6 +37,13 @@ class _PrefTrainStationDisplayAlertState extends ConsumerState<PrefTrainStationD
       prefTrainNotifier.getPrefTrainStation(prefName: widget.prefName);
     });
     _loadPrefPolygons();
+  }
+
+  ///
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   ///
@@ -49,6 +59,7 @@ class _PrefTrainStationDisplayAlertState extends ConsumerState<PrefTrainStationD
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.transparent,
+      resizeToAvoidBottomInset: false,
 
       body: SafeArea(
         child: DefaultTextStyle(
@@ -67,7 +78,9 @@ class _PrefTrainStationDisplayAlertState extends ConsumerState<PrefTrainStationD
 
                 Expanded(
                   child: Stack(
+                    clipBehavior: Clip.hardEdge,
                     children: <Widget>[
+                      // 地図（背景）
                       Positioned.fill(
                         child: PrefectureMapWidget(
                           prefName: widget.prefName,
@@ -75,7 +88,24 @@ class _PrefTrainStationDisplayAlertState extends ConsumerState<PrefTrainStationD
                           mapController: _mapController,
                         ),
                       ),
-                      displayPrefTrainList(),
+
+                      // 電車リスト（検索ボタン分だけ上に隙間）
+                      Positioned.fill(top: 48, child: displayPrefTrainList()),
+
+                      // 検索ボタン（BottomSheetを開く）
+                      Positioned(
+                        top: 0,
+                        right: 0,
+                        child: ElevatedButton.icon(
+                          onPressed: () => _showSearchBottomSheet(context),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.black.withOpacity(0.6),
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          ),
+                          icon: const Icon(Icons.search, color: Colors.white, size: 18),
+                          label: const Text('駅名検索', style: TextStyle(color: Colors.white, fontSize: 12)),
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -83,6 +113,27 @@ class _PrefTrainStationDisplayAlertState extends ConsumerState<PrefTrainStationD
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  ///
+  void _showSearchBottomSheet(BuildContext context) {
+    final List<PrefTrainModel> trainList = prefTrainStationState.prefTrainList;
+    final Map<String, int> indexByTrainName = <String, int>{};
+    for (int i = 0; i < trainList.length; i++) {
+      indexByTrainName[trainList[i].trainName] = i;
+    }
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.grey[900],
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (_) => _SearchSheet(
+        trainList: trainList,
+        indexByTrainName: indexByTrainName,
+        itemScrollController: _itemScrollController,
       ),
     );
   }
@@ -99,7 +150,8 @@ class _PrefTrainStationDisplayAlertState extends ConsumerState<PrefTrainStationD
       return const Center(child: Text('データがありません'));
     }
 
-    return ListView.builder(
+    return ScrollablePositionedList.builder(
+      itemScrollController: _itemScrollController,
       itemCount: trainList.length,
       itemBuilder: (BuildContext context, int index) {
         final PrefTrainModel train = trainList[index];
@@ -433,7 +485,7 @@ class _PrefectureMapWidgetState extends State<PrefectureMapWidget> {
                   .map(
                     (List<LatLng> ring) => Polygon<String>(
                       points: ring,
-                      color: Colors.white,
+                      color: Colors.pinkAccent.withValues(alpha: 0.3),
                       borderColor: Colors.black,
                       borderStrokeWidth: 1.5,
                     ),
@@ -465,6 +517,135 @@ class _PrefectureMapWidgetState extends State<PrefectureMapWidget> {
           ],
         );
       },
+    );
+  }
+}
+
+////////////////////////////////////////////////////////////////////////
+
+class _SearchSheet extends StatefulWidget {
+  const _SearchSheet({required this.trainList, required this.indexByTrainName, required this.itemScrollController});
+
+  final List<PrefTrainModel> trainList;
+  final Map<String, int> indexByTrainName;
+  final ItemScrollController itemScrollController;
+
+  @override
+  State<_SearchSheet> createState() => _SearchSheetState();
+}
+
+class _SearchSheetState extends State<_SearchSheet> {
+  final TextEditingController _ctrl = TextEditingController();
+  List<({String stationName, PrefTrainModel train})> _results = <({String stationName, PrefTrainModel train})>[];
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  void _search() {
+    final String query = _ctrl.text.trim();
+    final List<({String stationName, PrefTrainModel train})> found = <({String stationName, PrefTrainModel train})>[];
+    for (final PrefTrainModel train in widget.trainList) {
+      for (final PrefStationModel s in train.station) {
+        if (s.stationName.contains(query)) {
+          found.add((stationName: s.stationName, train: train));
+          break;
+        }
+      }
+    }
+    setState(() => _results = found);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final double keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: keyboardHeight),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          const SizedBox(height: 8),
+          Container(
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(color: Colors.white30, borderRadius: BorderRadius.circular(2)),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: <Widget>[
+                Expanded(
+                  child: TextField(
+                    controller: _ctrl,
+                    autofocus: true,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: InputDecoration(
+                      hintText: '駅名を入力',
+                      hintStyle: const TextStyle(color: Colors.white54),
+                      isDense: true,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: const BorderSide(color: Colors.white54),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: const BorderSide(color: Colors.white),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton(
+                  onPressed: () {
+                    FocusScope.of(context).unfocus();
+                    _search();
+                  },
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.pinkAccent.withOpacity(0.4)),
+                  child: const Text('検索', style: TextStyle(color: Colors.white)),
+                ),
+              ],
+            ),
+          ),
+          if (_results.isEmpty)
+            const Padding(
+              padding: EdgeInsets.only(bottom: 16),
+              child: Text('ここに結果が出ます', style: TextStyle(color: Colors.white54)),
+            )
+          else
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 300),
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: _results.length,
+                itemBuilder: (_, int i) {
+                  final ({String stationName, PrefTrainModel train}) item = _results[i];
+                  return ListTile(
+                    dense: true,
+                    leading: const Icon(Icons.train, color: Colors.white70),
+                    title: Text(item.train.trainName, style: const TextStyle(color: Colors.white)),
+                    subtitle: Text(item.stationName, style: const TextStyle(color: Colors.white70)),
+                    onTap: () {
+                      Navigator.pop(context);
+                      final int? idx = widget.indexByTrainName[item.train.trainName];
+                      if (idx != null && widget.itemScrollController.isAttached) {
+                        widget.itemScrollController.scrollTo(
+                          index: idx,
+                          duration: const Duration(milliseconds: 450),
+                          curve: Curves.easeInOut,
+                        );
+                      }
+                    },
+                  );
+                },
+              ),
+            ),
+          const SizedBox(height: 16),
+        ],
+      ),
     );
   }
 }
