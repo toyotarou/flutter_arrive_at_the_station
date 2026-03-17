@@ -44,31 +44,6 @@ class _PrefTrainStationDisplayAlertState extends ConsumerState<PrefTrainStationD
     }
   }
 
-  /// レイキャスティング法で点がポリゴン群の内側かどうかを判定
-  bool _isInsidePref(PrefStationModel s) {
-    final LatLng point = LatLng(s.lat, s.lng);
-    for (final List<LatLng> ring in _prefPolygons) {
-      if (_pointInPolygon(point, ring)) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  bool _pointInPolygon(LatLng point, List<LatLng> polygon) {
-    bool inside = false;
-    int j = polygon.length - 1;
-    for (int i = 0; i < polygon.length; j = i++) {
-      final double xi = polygon[i].longitude, yi = polygon[i].latitude;
-      final double xj = polygon[j].longitude, yj = polygon[j].latitude;
-      if (((yi > point.latitude) != (yj > point.latitude)) &&
-          (point.longitude < (xj - xi) * (point.latitude - yi) / (yj - yi) + xi)) {
-        inside = !inside;
-      }
-    }
-    return inside;
-  }
-
   ///
   @override
   Widget build(BuildContext context) {
@@ -129,109 +104,57 @@ class _PrefTrainStationDisplayAlertState extends ConsumerState<PrefTrainStationD
       itemBuilder: (BuildContext context, int index) {
         final PrefTrainModel train = trainList[index];
 
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        return Stack(
           children: <Widget>[
-            Container(
-              width: double.infinity,
-              color: Colors.white.withOpacity(0.2),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            ExpansionTile(
+              collapsedBackgroundColor: Colors.white.withOpacity(0.2),
+              backgroundColor: Colors.white.withOpacity(0.2),
+              iconColor: Colors.white,
+              collapsedIconColor: Colors.white,
+              title: Text(
+                train.trainName,
+                style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 12),
+              ),
+
+              children: train.station
+                  .map(
+                    (PrefStationModel s) => Container(
+                      margin: const EdgeInsets.only(left: 20, right: 60),
+                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 4),
+                      child: Row(
+                        children: <Widget>[
+                          Expanded(
+                            child: Text(
+                              s.stationName,
+                              style: const TextStyle(color: Colors.white, fontSize: 12),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+
+                          const SizedBox.shrink(),
+                        ],
+                      ),
+                    ),
+                  )
+                  .toList(),
+            ),
+
+            Positioned(
+              top: 15,
+              right: 60,
+
               child: Row(
                 children: <Widget>[
-                  Expanded(
-                    child: Text(train.trainName, style: const TextStyle(fontWeight: FontWeight.bold)),
-                  ),
+                  if (_selectedTrainName != null && _selectedTrainName == train.trainName) ...<Widget>[
+                    IconButton(
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(minWidth: 30, maxWidth: 30),
 
-                  Row(
-                    children: <Widget>[
-                      if (_selectedTrainName != null) ...<Widget>[
-                        GestureDetector(
-                          onTap: () {
-                            if (_isBoundsActive) {
-                              // 解除 → 都道府県にリセット
-                              setState(() => _isBoundsActive = false);
-                              if (_prefPolygons.isNotEmpty) {
-                                final List<LatLng> allPrefPoints = _prefPolygons
-                                    .expand((List<LatLng> ring) => ring)
-                                    .toList();
-                                final double minLat = allPrefPoints
-                                    .map((LatLng p) => p.latitude)
-                                    .reduce((double a, double b) => a < b ? a : b);
-                                final double maxLat = allPrefPoints
-                                    .map((LatLng p) => p.latitude)
-                                    .reduce((double a, double b) => a > b ? a : b);
-                                final double minLng = allPrefPoints
-                                    .map((LatLng p) => p.longitude)
-                                    .reduce((double a, double b) => a < b ? a : b);
-                                final double maxLng = allPrefPoints
-                                    .map((LatLng p) => p.longitude)
-                                    .reduce((double a, double b) => a > b ? a : b);
-                                _mapController.fitCamera(
-                                  CameraFit.bounds(
-                                    bounds: LatLngBounds(LatLng(minLat, minLng), LatLng(maxLat, maxLng)),
-                                    padding: const EdgeInsets.all(24),
-                                  ),
-                                );
-                              }
-                            } else {
-                              // バウンズ表示
-                              if (_polylinePoints.isEmpty) {
-                                return;
-                              }
-                              setState(() => _isBoundsActive = true);
-                              final double minLat = _polylinePoints
-                                  .map((LatLng p) => p.latitude)
-                                  .reduce((double a, double b) => a < b ? a : b);
-                              final double maxLat = _polylinePoints
-                                  .map((LatLng p) => p.latitude)
-                                  .reduce((double a, double b) => a > b ? a : b);
-                              final double minLng = _polylinePoints
-                                  .map((LatLng p) => p.longitude)
-                                  .reduce((double a, double b) => a < b ? a : b);
-                              final double maxLng = _polylinePoints
-                                  .map((LatLng p) => p.longitude)
-                                  .reduce((double a, double b) => a > b ? a : b);
-                              _mapController.fitCamera(
-                                CameraFit.bounds(
-                                  bounds: LatLngBounds(LatLng(minLat, minLng), LatLng(maxLat, maxLng)),
-                                  padding: const EdgeInsets.all(24),
-                                ),
-                              );
-                            }
-                          },
-                          child: Icon(
-                            Icons.pages,
-                            color: (_isBoundsActive && _selectedTrainName == train.trainName) ? Colors.yellow : null,
-                          ),
-                        ),
-
-                        const SizedBox(width: 20),
-                      ],
-
-                      GestureDetector(
-                        onTap: () {
-                          setState(() {
-                            if (_selectedTrainName == train.trainName) {
-                              _selectedTrainName = null;
-                              _polylinePoints = <LatLng>[];
-                            } else {
-                              _selectedTrainName = train.trainName;
-                              _polylinePoints = train.station
-                                  .map((PrefStationModel s) => LatLng(s.lat, s.lng))
-                                  .toList();
-
-                              // // DEBUG: 駅の順番を確認
-                              // debugPrint('=== ${train.trainName} 駅順 ===');
-                              // for (final PrefStationModel s in train.station) {
-                              //   debugPrint('order:${s.order}  ${s.stationName}  (${s.lat}, ${s.lng})');
-                              // }
-                              //
-                              //
-                            }
-                            _isBoundsActive = false;
-                          });
-
-                          // 別の電車に切り替えた時（または解除時）は白塗り都道府県が中心に来るようにリセット
+                      onPressed: () {
+                        if (_isBoundsActive) {
+                          // 解除 → 都道府県にリセット
+                          setState(() => _isBoundsActive = false);
                           if (_prefPolygons.isNotEmpty) {
                             final List<LatLng> allPrefPoints = _prefPolygons
                                 .expand((List<LatLng> ring) => ring)
@@ -255,21 +178,88 @@ class _PrefTrainStationDisplayAlertState extends ConsumerState<PrefTrainStationD
                               ),
                             );
                           }
-                        },
-                        child: Icon(
-                          Icons.stacked_line_chart,
-                          color: _selectedTrainName == train.trainName ? Colors.yellow : null,
-                        ),
+                        } else {
+                          // バウンズ表示
+                          if (_polylinePoints.isEmpty) {
+                            return;
+                          }
+                          setState(() => _isBoundsActive = true);
+                          final double minLat = _polylinePoints
+                              .map((LatLng p) => p.latitude)
+                              .reduce((double a, double b) => a < b ? a : b);
+                          final double maxLat = _polylinePoints
+                              .map((LatLng p) => p.latitude)
+                              .reduce((double a, double b) => a > b ? a : b);
+                          final double minLng = _polylinePoints
+                              .map((LatLng p) => p.longitude)
+                              .reduce((double a, double b) => a < b ? a : b);
+                          final double maxLng = _polylinePoints
+                              .map((LatLng p) => p.longitude)
+                              .reduce((double a, double b) => a > b ? a : b);
+                          _mapController.fitCamera(
+                            CameraFit.bounds(
+                              bounds: LatLngBounds(LatLng(minLat, minLng), LatLng(maxLat, maxLng)),
+                              padding: const EdgeInsets.all(24),
+                            ),
+                          );
+                        }
+                      },
+                      icon: Icon(
+                        Icons.pages,
+                        color: (_isBoundsActive && _selectedTrainName == train.trainName)
+                            ? Colors.yellow
+                            : Colors.white,
                       ),
-                    ],
+                    ),
+
+                    const SizedBox(width: 20),
+                  ],
+
+                  IconButton(
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 30, maxWidth: 30),
+
+                    onPressed: () {
+                      setState(() {
+                        if (_selectedTrainName == train.trainName) {
+                          _selectedTrainName = null;
+                          _polylinePoints = <LatLng>[];
+                        } else {
+                          _selectedTrainName = train.trainName;
+                          _polylinePoints = train.station.map((PrefStationModel s) => LatLng(s.lat, s.lng)).toList();
+                        }
+                        _isBoundsActive = false;
+                      });
+
+                      // 別の電車に切り替えた時（または解除時）は白塗り都道府県が中心に来るようにリセット
+                      if (_prefPolygons.isNotEmpty) {
+                        final List<LatLng> allPrefPoints = _prefPolygons.expand((List<LatLng> ring) => ring).toList();
+                        final double minLat = allPrefPoints
+                            .map((LatLng p) => p.latitude)
+                            .reduce((double a, double b) => a < b ? a : b);
+                        final double maxLat = allPrefPoints
+                            .map((LatLng p) => p.latitude)
+                            .reduce((double a, double b) => a > b ? a : b);
+                        final double minLng = allPrefPoints
+                            .map((LatLng p) => p.longitude)
+                            .reduce((double a, double b) => a < b ? a : b);
+                        final double maxLng = allPrefPoints
+                            .map((LatLng p) => p.longitude)
+                            .reduce((double a, double b) => a > b ? a : b);
+                        _mapController.fitCamera(
+                          CameraFit.bounds(
+                            bounds: LatLngBounds(LatLng(minLat, minLng), LatLng(maxLat, maxLng)),
+                            padding: const EdgeInsets.all(24),
+                          ),
+                        );
+                      }
+                    },
+                    icon: Icon(
+                      Icons.stacked_line_chart,
+                      color: _selectedTrainName == train.trainName ? Colors.yellow : Colors.white,
+                    ),
                   ),
                 ],
-              ),
-            ),
-            ...train.station.map(
-              (PrefStationModel s) => Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
-                child: Text(s.stationName, style: const TextStyle(color: Colors.white)),
               ),
             ),
           ],
