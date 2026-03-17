@@ -59,6 +59,7 @@ class PrefTrainStation extends _$PrefTrainStation {
       //================================================//
 
       final Map<String, List<StationModel>> stationMap = <String, List<StationModel>>{};
+      final Map<String, List<StationModel>> lineNumberToStationsMap = <String, List<StationModel>>{};
 
       // ignore: always_specify_types
       await client.post(path: APIPath.getAllStation).then((value) {
@@ -72,6 +73,8 @@ class PrefTrainStation extends _$PrefTrainStation {
           if (trainName != null) {
             (stationMap[trainName] ??= <StationModel>[]).add(val);
           }
+
+          (lineNumberToStationsMap[val.lineNumber] ??= <StationModel>[]).add(val);
         }
       });
 
@@ -81,33 +84,6 @@ class PrefTrainStation extends _$PrefTrainStation {
       final Map<String, PrefTrainModel> map = <String, PrefTrainModel>{};
       final Map<String, List<PrefTrainModel>> map2 = <String, List<PrefTrainModel>>{};
 
-      // 駅単位の修正データをパース: "prefName;trainName;order;stationName;lat;lng"
-      final List<List<String>> repairStationEntries = utility
-          .mapWrongInfoRepairStationValue()
-          .map((String s) => s.split(';'))
-          .where((List<String> parts) => parts.length == 6 && parts[0] == prefName)
-          .toList();
-
-      // 路線丸ごと入れ替えデータをパース & trainNameでグループ化
-      final Map<String, List<PrefStationModel>> repairLineMap = <String, List<PrefStationModel>>{};
-      for (final String raw in utility.mapWrongInfoRepairLineValue()) {
-        final List<String> p = raw.split(';');
-        if (p.length != 6 || p[0] != prefName) {
-          continue;
-        }
-        final String trainName = p[1];
-        (repairLineMap[trainName] ??= <PrefStationModel>[]).add(
-          PrefStationModel(
-            id: 'repair-line-${p[2]}',
-            stationName: p[3],
-            address: '',
-            lat: double.parse(p[4]),
-            lng: double.parse(p[5]),
-            order: int.parse(p[2]),
-          ),
-        );
-      }
-
       // ignore: always_specify_types
       await client.post(path: APIPath.getPrefTrainStation, body: {'pref': prefName}).then((value) {
         // ignore: avoid_dynamic_calls
@@ -115,38 +91,26 @@ class PrefTrainStation extends _$PrefTrainStation {
           // ignore: avoid_dynamic_calls
           PrefTrainModel val = PrefTrainModel.fromJson(value['data'][i] as Map<String, dynamic>);
 
-          // 路線丸ごと入れ替え（repairLineMapが優先）
-          if (repairLineMap.containsKey(val.trainName)) {
-            final List<PrefStationModel> stations = List<PrefStationModel>.from(repairLineMap[val.trainName]!)
-              ..sort((PrefStationModel a, PrefStationModel b) => a.order.compareTo(b.order));
-            val = PrefTrainModel(trainNumber: val.trainNumber, trainName: val.trainName, station: stations);
+          // stationMapにある路線は自動的に並び順・内容を補正
+          if (stationMap.containsKey(val.trainName)) {
+            val = _correctByStationMap(val: val, smStations: stationMap[val.trainName]!);
           } else {
-            // 駅単位の修正を適用
-            final List<List<String>> matched = repairStationEntries
-                .where((List<String> p) => p[1] == val.trainName)
-                .toList();
-            if (matched.isNotEmpty) {
-              final List<PrefStationModel> stations = List<PrefStationModel>.from(val.station);
-              for (final List<String> p in matched) {
-                final int repairOrder = int.parse(p[2]);
-                final PrefStationModel repairStation = PrefStationModel(
-                  id: 'repair-$repairOrder',
-                  stationName: p[3],
-                  address: '',
-                  lat: double.parse(p[4]),
-                  lng: double.parse(p[5]),
-                  order: repairOrder,
-                );
-                final int existingIndex = stations.indexWhere((PrefStationModel s) => s.order == repairOrder);
-                if (existingIndex >= 0) {
-                  stations[existingIndex] = repairStation;
-                } else {
-                  stations.add(repairStation);
+            // stationMapにない路線はrepairTrainNumberで補正
+            final List<String> repairNumbers = utility.getRepairTrainNumber(trainName: val.trainName);
+            if (repairNumbers.isNotEmpty) {
+              // 複数路線番号をマージ（重複駅名は先着優先で除去）
+              final List<StationModel> merged = <StationModel>[];
+              final Set<String> seen = <String>{};
+              for (final String lineNum in repairNumbers) {
+                for (final StationModel s in lineNumberToStationsMap[lineNum] ?? <StationModel>[]) {
+                  if (seen.add(s.stationName)) {
+                    merged.add(s);
+                  }
                 }
               }
-              stations.sort((PrefStationModel a, PrefStationModel b) => a.order.compareTo(b.order));
-              val = PrefTrainModel(trainNumber: val.trainNumber, trainName: val.trainName, station: stations);
+              val = _correctByStationMap(val: val, smStations: merged);
             }
+            // repairNumbersが空の路線（上毛電鉄・上越新幹線・北陸新幹線）はprefAPIをそのまま使用
           }
 
           list.add(val);
@@ -183,4 +147,67 @@ class PrefTrainStation extends _$PrefTrainStation {
   }
 
   //============================================== api
+
+  /// stationMapまたはrepairの駅リストを使ってPrefTrainModelの駅順を補正する
+  /// APIデータを主とし、並び順が異なる場合のみstationMapの順序でソートする
+  PrefTrainModel _correctByStationMap({required PrefTrainModel val, required List<StationModel> smStations}) {
+    // stationMapの駅名→順序インデックスを作成
+    final Map<String, int> smOrderMap = <String, int>{};
+    for (int i = 0; i < smStations.length; i++) {
+      smOrderMap[smStations[i].stationName] = i;
+    }
+
+    // APIの駅リスト（内容はAPIデータをそのまま保持）
+    final List<PrefStationModel> apiStations = List<PrefStationModel>.from(val.station);
+
+    // 並び順が異なるか確認（共通駅のstationMap上のインデックスが単調増加かチェック）
+    bool orderDiffers = false;
+    int lastSmIndex = -1;
+    for (final PrefStationModel s in apiStations) {
+      final int? smIdx = smOrderMap[s.stationName];
+      if (smIdx != null) {
+        if (smIdx < lastSmIndex) {
+          orderDiffers = true;
+          break;
+        }
+        lastSmIndex = smIdx;
+      }
+    }
+
+    // 並び順が同じ場合はAPIデータをそのまま返す
+    if (!orderDiffers) {
+      return val;
+    }
+
+    // 並び順が異なる場合のみstationMapの順序でAPIの駅をソート
+    // stationMapにない駅はsmStations.lengthを割り当て、元のAPI順序を維持して末尾に配置
+    final Map<String, int> apiOriginalOrder = <String, int>{};
+    for (int i = 0; i < apiStations.length; i++) {
+      apiOriginalOrder[apiStations[i].stationName] = i;
+    }
+
+    apiStations.sort((PrefStationModel a, PrefStationModel b) {
+      final int idxA = smOrderMap[a.stationName] ?? (smStations.length + (apiOriginalOrder[a.stationName] ?? 0));
+      final int idxB = smOrderMap[b.stationName] ?? (smStations.length + (apiOriginalOrder[b.stationName] ?? 0));
+      return idxA.compareTo(idxB);
+    });
+
+    // orderフィールドを振り直す（内容はAPIデータをそのまま使用）
+    final List<PrefStationModel> corrected = <PrefStationModel>[];
+    for (int idx = 0; idx < apiStations.length; idx++) {
+      final PrefStationModel s = apiStations[idx];
+      corrected.add(
+        PrefStationModel(
+          id: s.id,
+          stationName: s.stationName,
+          address: s.address,
+          lat: s.lat,
+          lng: s.lng,
+          order: idx,
+        ),
+      );
+    }
+
+    return PrefTrainModel(trainNumber: val.trainNumber, trainName: val.trainName, station: corrected);
+  }
 }

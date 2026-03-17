@@ -199,7 +199,10 @@ class _PrefTrainStationDisplayAlertState extends ConsumerState<PrefTrainStationD
                               );
                             }
                           },
-                          child: Icon(Icons.pages, color: _isBoundsActive ? Colors.yellow : null),
+                          child: Icon(
+                            Icons.pages,
+                            color: (_isBoundsActive && _selectedTrainName == train.trainName) ? Colors.yellow : null,
+                          ),
                         ),
 
                         const SizedBox(width: 20),
@@ -264,7 +267,7 @@ class _PrefTrainStationDisplayAlertState extends ConsumerState<PrefTrainStationD
             ...train.station.map(
               (PrefStationModel s) => Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
-                child: Text(s.stationName, style: TextStyle(color: _isInsidePref(s) ? Colors.white : Colors.grey)),
+                child: Text(s.stationName, style: const TextStyle(color: Colors.white)),
               ),
             ),
           ],

@@ -63,22 +63,18 @@ class Utility {
   }
 
   ///
-  List<String> mapWrongInfoRepairStationValue() {
-    return <String>['群馬県;JR上越線;35;長岡;37.44611;138.85111'];
-  }
+  List<String> getRepairTrainNumber({required String trainName}) {
+    final Map<String, List<String>> map = <String, List<String>>{
+      'JR八高線': <String>['11317', '11318'],
+      'わたらせ渓谷鐵道線': <String>['99312'],
+      '上信電鉄上信線': <String>['99327'],
+    };
 
-  ///
-  List<String> mapWrongInfoRepairLineValue() {
-    return <String>[
-      '群馬県;JR信越本線;1;高崎;36.322239;139.012354',
-      '群馬県;JR信越本線;2;北高崎;36.338791;139.001076',
-      '群馬県;JR信越本線;3;群馬八幡;36.337641;138.957433',
-      '群馬県;JR信越本線;4;安中;36.331657;138.914368',
-      '群馬県;JR信越本線;5;磯部;36.298397;138.84965',
-      '群馬県;JR信越本線;6;松井田;36.309151;138.797705',
-      '群馬県;JR信越本線;7;西松井田;36.316067;138.786675',
-      '群馬県;JR信越本線;8;横川;36.336009;138.737926',
-    ];
+    return map[trainName] ?? <String>[];
+
+    //上毛電鉄
+    //上越新幹線
+    //北陸新幹線
   }
 }
 
