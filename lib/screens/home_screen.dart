@@ -1,12 +1,19 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:native_geofence/native_geofence.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:vibration/vibration.dart';
 
 import '../controllers/controllers_mixin.dart';
+import '../extensions/extensions.dart';
+import '../utility/shared_preferences_service.dart';
 import '../utility/utility.dart';
 import 'components/pref_train_station_display_alert.dart';
 import 'parts/arsta_dialog.dart';
@@ -28,6 +35,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
 
   String? _selectedPrefectureName;
 
+  bool _permissionsGranted = false;
+
+  String? _selectedStationName;
+  LatLng? _selectedStationLatLng;
+
+  Position? _currentPosition;
+
+  final MapController _mapController = MapController();
+
   Utility utility = Utility();
 
   ///
@@ -35,6 +51,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
   void initState() {
     super.initState();
     _future = _loadPrefecturePolygonData();
+    _checkPermissions();
+    _loadSelectedStation();
+    _fetchCurrentPosition();
   }
 
   ///
@@ -151,12 +170,81 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
       }
     }
 
-    return Polygon<String>(
-      points: outerMask,
-      holePointsList: holePointsList,
-      color: Colors.white,
-      borderColor: Colors.white,
-    );
+    return Polygon<String>(points: outerMask, holePointsList: holePointsList, color: Colors.white);
+  }
+
+  ///
+  Future<void> _checkPermissions() async {
+    final PermissionStatus location = await Permission.location.status;
+    final PermissionStatus locationAlways = await Permission.locationAlways.status;
+    final PermissionStatus notification = await Permission.notification.status;
+
+    final bool granted = location.isGranted && locationAlways.isGranted && notification.isGranted;
+
+    if (mounted) {
+      setState(() {
+        _permissionsGranted = granted;
+      });
+    }
+  }
+
+  ///
+  Future<void> _requestPermissions() async {
+    await Permission.location.request();
+
+    await Permission.locationAlways.request();
+
+    await Permission.notification.request();
+
+    await _checkPermissions();
+  }
+
+  ///
+  Future<void> _fetchCurrentPosition() async {
+    try {
+      final Position position = await Geolocator.getCurrentPosition();
+      if (mounted) {
+        setState(() => _currentPosition = position);
+      }
+    } catch (_) {}
+  }
+
+  ///
+  Future<void> _loadSelectedStation() async {
+    final String? json = await SharedPreferencesService.loadSelectedStation();
+    if (mounted) {
+      if (json != null) {
+        try {
+          final Map<String, dynamic> map = jsonDecode(json) as Map<String, dynamic>;
+          final double? lat = (map['lat'] as num?)?.toDouble();
+          final double? lng = (map['lng'] as num?)?.toDouble();
+          setState(() {
+            _selectedStationName = map['station_name'] as String?;
+            _selectedStationLatLng = (lat != null && lng != null) ? LatLng(lat, lng) : null;
+          });
+        } catch (_) {}
+      } else {
+        setState(() {
+          _selectedStationName = null;
+          _selectedStationLatLng = null;
+        });
+      }
+    }
+  }
+
+  ///
+  Future<void> _removeAllGeofences() async {
+    await NativeGeofenceManager.instance.removeAllGeofences();
+    if (Platform.isAndroid) {
+      await Vibration.cancel();
+    }
+    await SharedPreferencesService.removeSelectedStation();
+    if (mounted) {
+      setState(() {
+        _selectedStationName = null;
+        _selectedStationLatLng = null;
+      });
+    }
   }
 
   ///
@@ -168,14 +256,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
       return;
     }
 
-    // debugPrint('クリックした都道府県: $tappedPrefecture');
-    //
-    //
-    //
-
-    setState(() {
-      _selectedPrefectureName = tappedPrefecture;
-    });
+    setState(() => _selectedPrefectureName = tappedPrefecture);
   }
 
   ///
@@ -183,12 +264,74 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
   Widget build(BuildContext context) {
     final List<Color> fortyEightColor = utility.getFortyEightColor();
 
-    final Size screenSize = MediaQuery.sizeOf(context);
-    final double mapWidth = screenSize.width * 0.8;
-    final double mapHeight = screenSize.height * 0.5;
-
     return Scaffold(
-      appBar: AppBar(title: const Text('駅に着いたら')),
+      appBar: AppBar(
+        title: const Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text('あの駅に着いたら'),
+
+            Text('Wake me up at my stop!', style: TextStyle(fontSize: 10)),
+          ],
+        ),
+
+        actions: <Widget>[
+          GestureDetector(
+            onTap: () => _requestPermissions(),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: <Widget>[
+                Icon(Icons.security, color: _permissionsGranted ? Colors.yellowAccent : Colors.white),
+                const SizedBox(height: 5),
+                Text(
+                  'request',
+                  style: TextStyle(fontSize: 10, color: _permissionsGranted ? Colors.yellowAccent : Colors.white),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(width: 20),
+
+          GestureDetector(
+            onTap: () async {},
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: <Widget>[
+                Icon(Icons.remove_red_eye, color: (_selectedStationName != null) ? Colors.yellowAccent : Colors.white),
+                const SizedBox(height: 5),
+                Text(
+                  'watching',
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: (_selectedStationName != null) ? Colors.yellowAccent : Colors.white,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(width: 20),
+
+          GestureDetector(
+            onTap: () async {
+              // appParamNotifier.setIsSetStation(flag: false);
+              await _removeAllGeofences();
+            },
+            child: const Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: <Widget>[
+                Icon(Icons.close),
+                SizedBox(height: 5),
+                Text('stop', style: TextStyle(fontSize: 10)),
+              ],
+            ),
+          ),
+
+          const SizedBox(width: 20),
+        ],
+      ),
       body: FutureBuilder<List<PrefecturePolygonData>>(
         future: _future,
         builder: (BuildContext context, AsyncSnapshot<List<PrefecturePolygonData>> snapshot) {
@@ -268,7 +411,46 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
 
               Center(
                 child: SizedBox(
-                  width: mapWidth,
+                  width: context.screenSize.width * 0.8,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: <Widget>[
+                      Text(
+                        ///SSS
+                        () {
+                          if (_selectedStationName == null) {
+                            return '目的地：(未設定)';
+                          }
+                          if (_currentPosition != null && _selectedStationLatLng != null) {
+                            final double meters = utility.calculateDistance(
+                              LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
+                              _selectedStationLatLng!,
+                            );
+                            final String dist = meters >= 1000
+                                ? '${(meters / 1000).toStringAsFixed(1)}km'
+                                : '${meters.toStringAsFixed(0)}m';
+                            return '目的地：$_selectedStationName（$dist）';
+                          }
+                          return '目的地：$_selectedStationName';
+                        }(),
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: (_selectedStationName != null) ? Colors.yellowAccent : Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+
+                      const SizedBox.shrink(),
+                    ],
+                  ),
+                ),
+              ),
+
+              Divider(color: Colors.white.withValues(alpha: 0.5), thickness: 5, indent: 40, endIndent: 40),
+
+              Center(
+                child: SizedBox(
+                  width: context.screenSize.width * 0.8,
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: <Widget>[
@@ -276,7 +458,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
                       ElevatedButton(
                         onPressed: () {
                           setState(() => _selectedPrefectureName = null);
+                          _mapController.move(const LatLng(36.5, 137.8), 5.2);
                         },
+
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.pinkAccent.withValues(alpha: 0.2)),
+
                         child: const Text('clear'),
                       ),
                     ],
@@ -286,8 +472,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
 
               Center(
                 child: Container(
-                  width: mapWidth,
-                  height: mapHeight,
+                  width: context.screenSize.width * 0.8,
+                  height: context.screenSize.height * 0.5,
                   clipBehavior: Clip.antiAlias,
                   decoration: BoxDecoration(
                     color: Colors.white,
@@ -295,6 +481,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: FlutterMap(
+                    mapController: _mapController,
                     options: MapOptions(
                       initialCenter: const LatLng(36.5, 137.8),
                       initialZoom: 5.2,
@@ -350,7 +537,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
                           ArstaDialog(
                             context: context,
                             widget: PrefTrainStationDisplayAlert(prefName: _selectedPrefectureName!),
-                          );
+                          ).then((_) async {
+                            await _loadSelectedStation();
+                            setState(() => _selectedPrefectureName = null);
+                            _mapController.move(const LatLng(36.5, 137.8), 5.2);
+                          });
                         },
                         child: const Icon(Icons.train, color: Colors.black),
                       ),

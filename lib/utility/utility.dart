@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:latlong2/latlong.dart';
 
 class Utility {
   ///
@@ -75,6 +76,12 @@ class Utility {
     //上毛電鉄
     //上越新幹線
     //北陸新幹線
+  }
+
+  ///
+  double calculateDistance(LatLng p1, LatLng p2) {
+    const Distance distance = Distance();
+    return distance.as(LengthUnit.Meter, p1, p2);
   }
 }
 

@@ -5,7 +5,7 @@
 		<key>CFBundleDevelopmentRegion</key>
 		<string>$(DEVELOPMENT_LANGUAGE)</string>
 		<key>CFBundleDisplayName</key>
-		<string>駅に着いたら</string>
+		<string>あの駅に着いたら</string>
 		<key>CFBundleExecutable</key>
 		<string>$(EXECUTABLE_NAME)</string>
 		<key>CFBundleIdentifier</key>
@@ -47,5 +47,20 @@
 		<true/>
 		<key>UIStatusBarHidden</key>
 		<false/>
+
+		<!-- 位置情報の権限 -->
+		<key>NSLocationWhenInUseUsageDescription</key>
+		<string>駅への到着を検知するために位置情報を使用します。</string>
+		<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+		<string>バックグラウンドでも駅への到着を検知するために位置情報を使用します。</string>
+		<key>NSLocationAlwaysUsageDescription</key>
+		<string>バックグラウンドでも駅への到着を検知するために位置情報を使用します。</string>
+
+		<!-- バックグラウンド位置情報（ジオフェンスに必須） -->
+		<key>UIBackgroundModes</key>
+		<array>
+			<string>location</string>
+			<string>fetch</string>
+		</array>
 	</dict>
 </plist>

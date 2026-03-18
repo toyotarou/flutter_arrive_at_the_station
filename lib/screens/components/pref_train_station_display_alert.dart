@@ -5,10 +5,13 @@ import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:native_geofence/native_geofence.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 
 import '../../controllers/controllers_mixin.dart';
 import '../../model/pref_train_station_model.dart';
+import '../../utility/functions.dart';
+import '../../utility/shared_preferences_service.dart';
 
 class PrefTrainStationDisplayAlert extends ConsumerStatefulWidget {
   const PrefTrainStationDisplayAlert({super.key, required this.prefName});
@@ -29,6 +32,8 @@ class _PrefTrainStationDisplayAlertState extends ConsumerState<PrefTrainStationD
   final TextEditingController _searchController = TextEditingController();
   final ItemScrollController _itemScrollController = ItemScrollController();
 
+  PrefStationModel? _selectedStation;
+
   ///
   @override
   void initState() {
@@ -37,6 +42,7 @@ class _PrefTrainStationDisplayAlertState extends ConsumerState<PrefTrainStationD
       prefTrainNotifier.getPrefTrainStation(prefName: widget.prefName);
     });
     _loadPrefPolygons();
+    _loadSelectedStation();
   }
 
   ///
@@ -44,6 +50,38 @@ class _PrefTrainStationDisplayAlertState extends ConsumerState<PrefTrainStationD
   void dispose() {
     _searchController.dispose();
     super.dispose();
+  }
+
+  ///
+  Future<void> _loadSelectedStation() async {
+    final String? json = await SharedPreferencesService.loadSelectedStation();
+    if (json != null && mounted) {
+      try {
+        final Map<String, dynamic> map = jsonDecode(json) as Map<String, dynamic>;
+        setState(() => _selectedStation = PrefStationModel.fromJson(map));
+      } catch (_) {}
+    }
+  }
+
+  ///
+  Future<void> _registerGeofence(PrefStationModel station) async {
+    final Geofence zone = Geofence(
+      id: 'station_${station.stationName}',
+      location: Location(latitude: station.lat, longitude: station.lng),
+      radiusMeters: 1000,
+      triggers: <GeofenceEvent>{GeofenceEvent.enter},
+      iosSettings: const IosGeofenceSettings(initialTrigger: true),
+      androidSettings: const AndroidGeofenceSettings(
+        initialTriggers: <GeofenceEvent>{GeofenceEvent.enter},
+        expiration: Duration(days: 7),
+        loiteringDelay: Duration(minutes: 1),
+        notificationResponsiveness: Duration(seconds: 10),
+      ),
+    );
+
+    try {
+      await NativeGeofenceManager.instance.createGeofence(zone, geofenceCallback);
+    } catch (_) {}
   }
 
   ///
@@ -91,18 +129,47 @@ class _PrefTrainStationDisplayAlertState extends ConsumerState<PrefTrainStationD
                       // 電車リスト（検索ボタン分だけ上に隙間）
                       Positioned.fill(top: 60, child: displayPrefTrainList()),
 
-                      // 検索ボタン（BottomSheetを開く）
                       Positioned(
                         top: 5,
                         right: 10,
-                        child: ElevatedButton.icon(
-                          onPressed: () => _showSearchBottomSheet(context),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.blueAccent.withOpacity(0.6),
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                          ),
-                          icon: const Icon(Icons.search, color: Colors.white, size: 18),
-                          label: const Text('駅名検索', style: TextStyle(color: Colors.white, fontSize: 12)),
+                        left: 10,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: <Widget>[
+                            // 検索ボタン（BottomSheetを開く）
+                            ElevatedButton.icon(
+                              onPressed: () => _showSearchBottomSheet(context),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.pinkAccent.withValues(alpha: 0.2),
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              ),
+
+                              icon: const Icon(Icons.search, color: Colors.white, size: 18),
+                              label: const Text('駅名検索', style: TextStyle(color: Colors.white, fontSize: 12)),
+                            ),
+
+                            ElevatedButton.icon(
+                              onPressed: () async {
+                                final PrefStationModel? station = _selectedStation;
+                                if (station == null) {
+                                  return;
+                                }
+                                await _registerGeofence(station);
+
+                                if (context.mounted) {
+                                  Navigator.pop(context);
+                                }
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: (_selectedStation != null)
+                                    ? Colors.yellowAccent.withValues(alpha: 0.4)
+                                    : Colors.pinkAccent.withValues(alpha: 0.2),
+                              ),
+
+                              icon: const Icon(Icons.location_on, color: Colors.white, size: 18),
+                              label: Text('設定', style: TextStyle(color: Colors.white, fontSize: 12)),
+                            ),
+                          ],
                         ),
                       ),
                     ],
@@ -177,7 +244,18 @@ class _PrefTrainStationDisplayAlertState extends ConsumerState<PrefTrainStationD
                       ),
                       child: Row(
                         children: <Widget>[
-                          CircleAvatar(backgroundColor: Colors.black.withValues(alpha: 0.4), radius: 12),
+                          GestureDetector(
+                            onTap: () {
+                              setState(() => _selectedStation = s);
+                              SharedPreferencesService.saveSelectedStation(jsonEncode(s.toJson()));
+                            },
+                            child: CircleAvatar(
+                              backgroundColor: (_selectedStation != null && _selectedStation!.id == s.id)
+                                  ? Colors.yellowAccent.withValues(alpha: 0.6)
+                                  : Colors.black.withValues(alpha: 0.4),
+                              radius: 12,
+                            ),
+                          ),
 
                           const SizedBox(width: 20),
 
