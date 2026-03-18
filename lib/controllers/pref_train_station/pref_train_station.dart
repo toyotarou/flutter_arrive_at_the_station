@@ -208,14 +208,7 @@ class PrefTrainStation extends _$PrefTrainStation {
     for (int idx = 0; idx < apiStations.length; idx++) {
       final PrefStationModel s = apiStations[idx];
       corrected.add(
-        PrefStationModel(
-          id: s.id,
-          stationName: s.stationName,
-          address: s.address,
-          lat: s.lat,
-          lng: s.lng,
-          order: idx,
-        ),
+        PrefStationModel(id: s.id, stationName: s.stationName, address: s.address, lat: s.lat, lng: s.lng, order: idx),
       );
     }
 
