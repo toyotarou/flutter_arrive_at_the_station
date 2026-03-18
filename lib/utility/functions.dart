@@ -33,7 +33,7 @@ Future<void> geofenceCallback(GeofenceCallbackParams params) async {
   if (Platform.isAndroid) {
     try {
       await FlutterVolumeController.updateShowSystemUI(false);
-      await FlutterVolumeController.setVolume(1.0, stream: AudioStream.music);
+      await FlutterVolumeController.setVolume(1.0);
     } catch (_) {}
   }
 
@@ -62,7 +62,7 @@ Future<void> geofenceCallback(GeofenceCallbackParams params) async {
   // ループバイブレーション開始（Android のみ）
   if (Platform.isAndroid) {
     final bool hasVibrator = await Vibration.hasVibrator();
-    if (hasVibrator == true) {
+    if (hasVibrator) {
       await Vibration.vibrate(pattern: kVibrationPattern, intensities: kVibrationIntensities, repeat: 0);
     }
   }
