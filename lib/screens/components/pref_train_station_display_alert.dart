@@ -167,7 +167,7 @@ class _PrefTrainStationDisplayAlertState extends ConsumerState<PrefTrainStationD
                               ),
 
                               icon: const Icon(Icons.location_on, color: Colors.white, size: 18),
-                              label: Text('設定', style: TextStyle(color: Colors.white, fontSize: 12)),
+                              label: const Text('設定', style: TextStyle(color: Colors.white, fontSize: 12)),
                             ),
                           ],
                         ),

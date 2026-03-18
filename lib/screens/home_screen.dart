@@ -416,7 +416,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: <Widget>[
                       Text(
-                        ///SSS
                         () {
                           if (_selectedStationName == null) {
                             return '目的地：(未設定)';
