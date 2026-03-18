@@ -84,7 +84,6 @@ class PrefTrainStation extends _$PrefTrainStation {
       final Map<String, PrefTrainModel> map = <String, PrefTrainModel>{};
       final Map<String, List<PrefTrainModel>> map2 = <String, List<PrefTrainModel>>{};
 
-      final Map<String, Map<String, List<String>>> repairMap = utility.getStationDataRepairValue();
       final Map<String, Map<String, Map<String, PrefStationModel>>> patchMap = utility
           .getStationDataRepairPrefStationModel();
 
@@ -94,9 +93,6 @@ class PrefTrainStation extends _$PrefTrainStation {
         for (int i = 0; i < value['data'].length.toString().toInt(); i++) {
           // ignore: avoid_dynamic_calls
           PrefTrainModel val = PrefTrainModel.fromJson(value['data'][i] as Map<String, dynamic>);
-
-          // 補正前の生データの駅順を保存
-          final List<String> originalApiNames = val.station.map((PrefStationModel s) => s.stationName).toList();
 
           // APIの駅名セット
           final Set<String> apiStationNames = val.station.map((PrefStationModel s) => s.stationName).toSet();
