@@ -78,7 +78,6 @@ class _PrefTrainStationDisplayAlertState extends ConsumerState<PrefTrainStationD
 
                 Expanded(
                   child: Stack(
-                    clipBehavior: Clip.hardEdge,
                     children: <Widget>[
                       // 地図（背景）
                       Positioned.fill(
@@ -90,16 +89,16 @@ class _PrefTrainStationDisplayAlertState extends ConsumerState<PrefTrainStationD
                       ),
 
                       // 電車リスト（検索ボタン分だけ上に隙間）
-                      Positioned.fill(top: 48, child: displayPrefTrainList()),
+                      Positioned.fill(top: 60, child: displayPrefTrainList()),
 
                       // 検索ボタン（BottomSheetを開く）
                       Positioned(
-                        top: 0,
-                        right: 0,
+                        top: 5,
+                        right: 10,
                         child: ElevatedButton.icon(
                           onPressed: () => _showSearchBottomSheet(context),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.black.withOpacity(0.6),
+                            backgroundColor: Colors.blueAccent.withOpacity(0.6),
                             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                           ),
                           icon: const Icon(Icons.search, color: Colors.white, size: 18),
@@ -171,20 +170,38 @@ class _PrefTrainStationDisplayAlertState extends ConsumerState<PrefTrainStationD
               children: train.station
                   .map(
                     (PrefStationModel s) => Container(
-                      margin: const EdgeInsets.only(left: 20, right: 60),
+                      margin: const EdgeInsets.only(left: 40, right: 10),
                       padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 4),
+                      decoration: BoxDecoration(
+                        border: Border(bottom: BorderSide(color: Colors.white.withValues(alpha: 0.4))),
+                      ),
                       child: Row(
                         children: <Widget>[
+                          CircleAvatar(backgroundColor: Colors.black.withValues(alpha: 0.4), radius: 12),
+
+                          const SizedBox(width: 20),
+
                           Expanded(
-                            child: Text(
-                              s.stationName,
-                              style: const TextStyle(color: Colors.white, fontSize: 12),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                            child: Stack(
+                              children: <Widget>[
+                                Positioned(
+                                  bottom: 0,
+                                  right: 0,
+                                  child: Text(
+                                    '${s.lat} / ${s.lng}',
+                                    style: const TextStyle(color: Colors.grey, fontSize: 10),
+                                  ),
+                                ),
+
+                                Text(
+                                  s.stationName,
+                                  style: const TextStyle(color: Colors.white, fontSize: 12),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
                             ),
                           ),
-
-                          const SizedBox.shrink(),
                         ],
                       ),
                     ),
@@ -463,7 +480,6 @@ class _PrefectureMapWidgetState extends State<PrefectureMapWidget> {
           ],
           holePointsList: allRings,
           color: Colors.black,
-          borderColor: Colors.black,
         );
 
         return FlutterMap(
@@ -480,40 +496,37 @@ class _PrefectureMapWidgetState extends State<PrefectureMapWidget> {
               urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
               userAgentPackageName: 'com.example.flutter_arrive_at_the_station',
             ),
+
             PolygonLayer<String>(
-              polygons: allRings
-                  .map(
-                    (List<LatLng> ring) => Polygon<String>(
-                      points: ring,
-                      color: Colors.pinkAccent.withValues(alpha: 0.3),
-                      borderColor: Colors.black,
-                      borderStrokeWidth: 1.5,
-                    ),
-                  )
-                  .toList(),
+              polygons: allRings.map((List<LatLng> ring) {
+                return Polygon<String>(points: ring, color: Colors.pinkAccent.withValues(alpha: 0.3));
+              }).toList(),
             ),
+
             PolygonLayer<String>(polygons: <Polygon<String>>[maskPolygon]),
-            if (widget.polylinePoints.length >= 2)
+
+            if (widget.polylinePoints.length >= 2) ...<Widget>[
               PolylineLayer<String>(
                 polylines: <Polyline<String>>[
                   Polyline<String>(points: widget.polylinePoints, color: Colors.red.withOpacity(0.4), strokeWidth: 20),
                 ],
               ),
-            if (widget.polylinePoints.isNotEmpty)
+            ],
+
+            if (widget.polylinePoints.isNotEmpty) ...<Widget>[
               MarkerLayer(
-                markers: widget.polylinePoints
-                    .map(
-                      (LatLng point) => Marker(
-                        point: point,
-                        width: 7,
-                        height: 7,
-                        child: Container(
-                          decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
-                        ),
-                      ),
-                    )
-                    .toList(),
+                markers: widget.polylinePoints.map((LatLng point) {
+                  return Marker(
+                    point: point,
+                    width: 7,
+                    height: 7,
+                    child: Container(
+                      decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                    ),
+                  );
+                }).toList(),
               ),
+            ],
           ],
         );
       },
