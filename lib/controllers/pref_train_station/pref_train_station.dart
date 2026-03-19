@@ -7,6 +7,7 @@ import '../../extensions/extensions.dart';
 import '../../model/pref_train_station_model.dart';
 import '../../model/station_model.dart';
 import '../../model/train_model.dart';
+import '../../utility/data_repair.dart';
 import '../../utility/utility.dart';
 
 part 'pref_train_station.freezed.dart';
@@ -27,6 +28,8 @@ class PrefTrainStationState with _$PrefTrainStationState {
 @Riverpod(keepAlive: true)
 class PrefTrainStation extends _$PrefTrainStation {
   final Utility utility = Utility();
+
+  DataRepair dataRepair = DataRepair();
 
   ///
   @override
@@ -98,7 +101,7 @@ class PrefTrainStation extends _$PrefTrainStation {
 
       // 手動パッチデータ（utility に定義）: 都道府県 → 路線名 → 駅名 → 補正済み PrefStationModel
       // APIの誤座標・欠落駅・誤った駅順を修正するために使用
-      final Map<String, Map<String, Map<String, PrefStationModel>>> patchMap = utility
+      final Map<String, Map<String, Map<String, PrefStationModel>>> patchMap = dataRepair
           .getStationDataRepairPrefStationModel();
 
       // ignore: always_specify_types
@@ -125,7 +128,7 @@ class PrefTrainStation extends _$PrefTrainStation {
             // stationMap に路線名が存在しない路線（getAllStation と路線名が異なるケース）
             // utility.getRepairTrainNumber で対応する路線番号を取得してマージ
             // 例: JR八高線（2路線番号をマージ）、わたらせ渓谷鐵道線、上信電鉄上信線
-            final List<String> repairNumbers = utility.getRepairTrainNumber(trainName: val.trainName);
+            final List<String> repairNumbers = dataRepair.getRepairTrainNumber(trainName: val.trainName);
             if (repairNumbers.isNotEmpty) {
               // 複数の路線番号の駅を結合（重複駅名は先着優先で除去）
               final List<StationModel> merged = <StationModel>[];
