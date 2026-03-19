@@ -258,7 +258,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
   }
 
   // 半径何キロ圏内を検索するか（変更可能）
-  static const double _nearbyRadiusKm = 10.0;
+  static const double _nearbyRadiusKm = 30.0;
 
   ///
   Future<void> _fetchCurrentPosition() async {
@@ -591,7 +591,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
                           ArstaDialog(
                             context: context,
                             widget: NearByStationsDisplayAlert(currentPosition: _currentPosition),
-                          );
+                          ).then((_) async {
+                            await _loadSelectedStation();
+                          });
                         },
                         icon: const Icon(Icons.gps_fixed),
                       ),

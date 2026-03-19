@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
@@ -5,9 +6,12 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:native_geofence/native_geofence.dart';
 
 import '../../controllers/controllers_mixin.dart';
 import '../../model/pref_train_station_model.dart';
+import '../../utility/functions.dart';
+import '../../utility/shared_preferences_service.dart';
 import '../../utility/utility.dart';
 
 ////////////////////////////////////////////////////////////////////////
@@ -27,6 +31,7 @@ class _NearByStationsDisplayAlertState extends ConsumerState<NearByStationsDispl
   final Utility _utility = Utility();
 
   int _selectedKm = 1;
+  PrefStationModel? _selectedStation;
 
   LatLng get _center {
     if (widget.currentPosition != null) {
@@ -51,12 +56,57 @@ class _NearByStationsDisplayAlertState extends ConsumerState<NearByStationsDispl
     _mapController.fitCamera(CameraFit.bounds(bounds: _boundsForKm(km), padding: const EdgeInsets.all(24)));
   }
 
+  /// 駅タップ：選択 or 解除
+  Future<void> _onStationTap(PrefStationModel station) async {
+    if (_selectedStation?.id == station.id) {
+      // 再タップ → 解除
+      await NativeGeofenceManager.instance.removeAllGeofences();
+      await SharedPreferencesService.removeSelectedStation();
+      setState(() => _selectedStation = null);
+    } else {
+      // 新規選択
+      await SharedPreferencesService.saveSelectedStation(jsonEncode(station.toJson()));
+      setState(() => _selectedStation = station);
+    }
+  }
+
+  /// TTT：ジオフェンス登録して画面を閉じる
+  Future<void> _onSetGeofence() async {
+    final PrefStationModel? station = _selectedStation;
+    if (station == null) {
+      return;
+    }
+
+    await NativeGeofenceManager.instance.removeAllGeofences();
+
+    final Geofence zone = Geofence(
+      id: 'station_${station.stationName}',
+      location: Location(latitude: station.lat, longitude: station.lng),
+      radiusMeters: 1000,
+      triggers: <GeofenceEvent>{GeofenceEvent.enter},
+      iosSettings: const IosGeofenceSettings(initialTrigger: true),
+      androidSettings: const AndroidGeofenceSettings(
+        initialTriggers: <GeofenceEvent>{GeofenceEvent.enter},
+        expiration: Duration(days: 7),
+        loiteringDelay: Duration(minutes: 1),
+        notificationResponsiveness: Duration(seconds: 10),
+      ),
+    );
+
+    try {
+      await NativeGeofenceManager.instance.createGeofence(zone, geofenceCallback);
+    } catch (_) {}
+
+    if (mounted) {
+      Navigator.of(context).pop();
+    }
+  }
+
   ///
   @override
   Widget build(BuildContext context) {
     final List<PrefStationModel> allStations = prefTrainStationState.nearbyStations;
 
-    // 距離も一緒に計算してフィルタリング
     final List<({PrefStationModel station, double distKm})> filteredStations = allStations
         .map((PrefStationModel s) {
           final double distKm = _utility.calculateDistance(_center, LatLng(s.lat, s.lng)) / 1000;
@@ -121,54 +171,62 @@ class _NearByStationsDisplayAlertState extends ConsumerState<NearByStationsDispl
                             ),
                           ),
                           // 駅
-                          ...filteredStations.map(
-                            (({double distKm, PrefStationModel station}) e) => Marker(
+                          ...filteredStations.map((({double distKm, PrefStationModel station}) e) {
+                            final bool isSelected = _selectedStation?.id == e.station.id;
+                            final Color plateColor = isSelected
+                                ? Colors.redAccent.withValues(alpha: 0.9)
+                                : Colors.blueAccent.withValues(alpha: 0.85);
+
+                            return Marker(
                               point: LatLng(e.station.lat, e.station.lng),
                               width: 80,
                               height: 44,
                               alignment: Alignment.bottomCenter,
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: <Widget>[
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 3),
-                                    decoration: BoxDecoration(
-                                      color: Colors.blueAccent.withValues(alpha: 0.85),
-                                      borderRadius: BorderRadius.circular(4),
-                                    ),
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: <Widget>[
-                                        Text(
-                                          e.station.stationName,
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 10,
-                                            fontWeight: FontWeight.bold,
+                              child: GestureDetector(
+                                onTap: () => _onStationTap(e.station),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: <Widget>[
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 3),
+                                      decoration: BoxDecoration(
+                                        color: plateColor,
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: <Widget>[
+                                          Text(
+                                            e.station.stationName,
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                            overflow: TextOverflow.ellipsis,
                                           ),
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                        Text(
-                                          '${e.distKm.toStringAsFixed(1)}Km',
-                                          style: const TextStyle(
-                                            color: Colors.white70,
-                                            fontSize: 9,
-                                            fontWeight: FontWeight.bold,
+                                          Text(
+                                            '${e.distKm.toStringAsFixed(1)}Km',
+                                            style: const TextStyle(
+                                              color: Colors.white70,
+                                              fontSize: 9,
+                                              fontWeight: FontWeight.bold,
+                                            ),
                                           ),
-                                        ),
-                                      ],
+                                        ],
+                                      ),
                                     ),
-                                  ),
-                                  // ピン先
-                                  Container(
-                                    width: 4,
-                                    height: 4,
-                                    decoration: const BoxDecoration(color: Colors.blueAccent, shape: BoxShape.circle),
-                                  ),
-                                ],
+                                    // ピン先
+                                    Container(
+                                      width: 4,
+                                      height: 4,
+                                      decoration: BoxDecoration(color: plateColor, shape: BoxShape.circle),
+                                    ),
+                                  ],
+                                ),
                               ),
-                            ),
-                          ),
+                            );
+                          }),
                         ],
                       ),
                     ],
@@ -178,12 +236,12 @@ class _NearByStationsDisplayAlertState extends ConsumerState<NearByStationsDispl
 
               // km 選択ボタン（地図の上に重ねる）
               Positioned(
-                bottom: 20,
+                bottom: 70,
                 left: 20,
                 right: 20,
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: <int>[1, 2, 3, 4, 5].map((int km) {
+                  children: <int>[1, 3, 5, 10, 20].map((int km) {
                     final bool isSelected = _selectedKm == km;
                     return GestureDetector(
                       onTap: () => _changeRadius(km),
@@ -203,6 +261,30 @@ class _NearByStationsDisplayAlertState extends ConsumerState<NearByStationsDispl
                       ),
                     );
                   }).toList(),
+                ),
+              ),
+
+              // 設定ボタン
+              Positioned(
+                bottom: 5,
+                left: 20,
+                right: 20,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: <Widget>[
+                    const SizedBox.shrink(),
+
+                    ElevatedButton.icon(
+                      onPressed: _selectedStation != null ? _onSetGeofence : null,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _selectedStation != null
+                            ? Colors.yellowAccent.withValues(alpha: 0.8)
+                            : Colors.grey.withValues(alpha: 0.4),
+                      ),
+                      icon: const Icon(Icons.location_on, size: 18),
+                      label: const Text('設定', style: TextStyle(fontWeight: FontWeight.bold)),
+                    ),
+                  ],
                 ),
               ),
             ],
