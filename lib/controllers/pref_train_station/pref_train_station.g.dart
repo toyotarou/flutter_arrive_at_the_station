@@ -6,7 +6,7 @@ part of 'pref_train_station.dart';
 // RiverpodGenerator
 // **************************************************************************
 
-String _$prefTrainStationHash() => r'1a02deae0525a7503d111d8df35b7b1bd010179b';
+String _$prefTrainStationHash() => r'60406bb2ef08fee9dd089edf53eeb7a378599a4a';
 
 /// See also [PrefTrainStation].
 @ProviderFor(PrefTrainStation)

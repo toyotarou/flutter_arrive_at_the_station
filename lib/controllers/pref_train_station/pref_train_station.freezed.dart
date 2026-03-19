@@ -23,6 +23,10 @@ mixin _$PrefTrainStationState {
   Map<String, List<PrefTrainModel>> get prefStationTokyoTrainModelListMap =>
       throw _privateConstructorUsedError;
 
+  /// 現在地から半径X km圏内の全駅リスト
+  List<PrefStationModel> get nearbyStations =>
+      throw _privateConstructorUsedError;
+
   @JsonKey(ignore: true)
   $PrefTrainStationStateCopyWith<PrefTrainStationState> get copyWith =>
       throw _privateConstructorUsedError;
@@ -38,7 +42,8 @@ abstract class $PrefTrainStationStateCopyWith<$Res> {
       {String selectedPrefName,
       List<PrefTrainModel> prefTrainList,
       Map<String, PrefTrainModel> prefTrainMap,
-      Map<String, List<PrefTrainModel>> prefStationTokyoTrainModelListMap});
+      Map<String, List<PrefTrainModel>> prefStationTokyoTrainModelListMap,
+      List<PrefStationModel> nearbyStations});
 }
 
 /// @nodoc
@@ -59,6 +64,7 @@ class _$PrefTrainStationStateCopyWithImpl<$Res,
     Object? prefTrainList = null,
     Object? prefTrainMap = null,
     Object? prefStationTokyoTrainModelListMap = null,
+    Object? nearbyStations = null,
   }) {
     return _then(_value.copyWith(
       selectedPrefName: null == selectedPrefName
@@ -78,6 +84,10 @@ class _$PrefTrainStationStateCopyWithImpl<$Res,
           ? _value.prefStationTokyoTrainModelListMap
           : prefStationTokyoTrainModelListMap // ignore: cast_nullable_to_non_nullable
               as Map<String, List<PrefTrainModel>>,
+      nearbyStations: null == nearbyStations
+          ? _value.nearbyStations
+          : nearbyStations // ignore: cast_nullable_to_non_nullable
+              as List<PrefStationModel>,
     ) as $Val);
   }
 }
@@ -95,7 +105,8 @@ abstract class _$$PrefTrainStationStateImplCopyWith<$Res>
       {String selectedPrefName,
       List<PrefTrainModel> prefTrainList,
       Map<String, PrefTrainModel> prefTrainMap,
-      Map<String, List<PrefTrainModel>> prefStationTokyoTrainModelListMap});
+      Map<String, List<PrefTrainModel>> prefStationTokyoTrainModelListMap,
+      List<PrefStationModel> nearbyStations});
 }
 
 /// @nodoc
@@ -114,6 +125,7 @@ class __$$PrefTrainStationStateImplCopyWithImpl<$Res>
     Object? prefTrainList = null,
     Object? prefTrainMap = null,
     Object? prefStationTokyoTrainModelListMap = null,
+    Object? nearbyStations = null,
   }) {
     return _then(_$PrefTrainStationStateImpl(
       selectedPrefName: null == selectedPrefName
@@ -133,6 +145,10 @@ class __$$PrefTrainStationStateImplCopyWithImpl<$Res>
           ? _value._prefStationTokyoTrainModelListMap
           : prefStationTokyoTrainModelListMap // ignore: cast_nullable_to_non_nullable
               as Map<String, List<PrefTrainModel>>,
+      nearbyStations: null == nearbyStations
+          ? _value._nearbyStations
+          : nearbyStations // ignore: cast_nullable_to_non_nullable
+              as List<PrefStationModel>,
     ));
   }
 }
@@ -146,10 +162,12 @@ class _$PrefTrainStationStateImpl implements _PrefTrainStationState {
       final Map<String, PrefTrainModel> prefTrainMap =
           const <String, PrefTrainModel>{},
       final Map<String, List<PrefTrainModel>> prefStationTokyoTrainModelListMap =
-          const <String, List<PrefTrainModel>>{}})
+          const <String, List<PrefTrainModel>>{},
+      final List<PrefStationModel> nearbyStations = const <PrefStationModel>[]})
       : _prefTrainList = prefTrainList,
         _prefTrainMap = prefTrainMap,
-        _prefStationTokyoTrainModelListMap = prefStationTokyoTrainModelListMap;
+        _prefStationTokyoTrainModelListMap = prefStationTokyoTrainModelListMap,
+        _nearbyStations = nearbyStations;
 
   @override
   @JsonKey()
@@ -182,9 +200,21 @@ class _$PrefTrainStationStateImpl implements _PrefTrainStationState {
     return EqualUnmodifiableMapView(_prefStationTokyoTrainModelListMap);
   }
 
+  /// 現在地から半径X km圏内の全駅リスト
+  final List<PrefStationModel> _nearbyStations;
+
+  /// 現在地から半径X km圏内の全駅リスト
+  @override
+  @JsonKey()
+  List<PrefStationModel> get nearbyStations {
+    if (_nearbyStations is EqualUnmodifiableListView) return _nearbyStations;
+    // ignore: implicit_dynamic_type
+    return EqualUnmodifiableListView(_nearbyStations);
+  }
+
   @override
   String toString() {
-    return 'PrefTrainStationState(selectedPrefName: $selectedPrefName, prefTrainList: $prefTrainList, prefTrainMap: $prefTrainMap, prefStationTokyoTrainModelListMap: $prefStationTokyoTrainModelListMap)';
+    return 'PrefTrainStationState(selectedPrefName: $selectedPrefName, prefTrainList: $prefTrainList, prefTrainMap: $prefTrainMap, prefStationTokyoTrainModelListMap: $prefStationTokyoTrainModelListMap, nearbyStations: $nearbyStations)';
   }
 
   @override
@@ -200,7 +230,9 @@ class _$PrefTrainStationStateImpl implements _PrefTrainStationState {
                 .equals(other._prefTrainMap, _prefTrainMap) &&
             const DeepCollectionEquality().equals(
                 other._prefStationTokyoTrainModelListMap,
-                _prefStationTokyoTrainModelListMap));
+                _prefStationTokyoTrainModelListMap) &&
+            const DeepCollectionEquality()
+                .equals(other._nearbyStations, _nearbyStations));
   }
 
   @override
@@ -209,7 +241,8 @@ class _$PrefTrainStationStateImpl implements _PrefTrainStationState {
       selectedPrefName,
       const DeepCollectionEquality().hash(_prefTrainList),
       const DeepCollectionEquality().hash(_prefTrainMap),
-      const DeepCollectionEquality().hash(_prefStationTokyoTrainModelListMap));
+      const DeepCollectionEquality().hash(_prefStationTokyoTrainModelListMap),
+      const DeepCollectionEquality().hash(_nearbyStations));
 
   @JsonKey(ignore: true)
   @override
@@ -224,8 +257,9 @@ abstract class _PrefTrainStationState implements PrefTrainStationState {
       {final String selectedPrefName,
       final List<PrefTrainModel> prefTrainList,
       final Map<String, PrefTrainModel> prefTrainMap,
-      final Map<String, List<PrefTrainModel>>
-          prefStationTokyoTrainModelListMap}) = _$PrefTrainStationStateImpl;
+      final Map<String, List<PrefTrainModel>> prefStationTokyoTrainModelListMap,
+      final List<PrefStationModel>
+          nearbyStations}) = _$PrefTrainStationStateImpl;
 
   @override
   String get selectedPrefName;
@@ -235,6 +269,10 @@ abstract class _PrefTrainStationState implements PrefTrainStationState {
   Map<String, PrefTrainModel> get prefTrainMap;
   @override
   Map<String, List<PrefTrainModel>> get prefStationTokyoTrainModelListMap;
+  @override
+
+  /// 現在地から半径X km圏内の全駅リスト
+  List<PrefStationModel> get nearbyStations;
   @override
   @JsonKey(ignore: true)
   _$$PrefTrainStationStateImplCopyWith<_$PrefTrainStationStateImpl>

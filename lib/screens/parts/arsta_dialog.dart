@@ -19,14 +19,20 @@ Future<void> ArstaDialog({
   return showDialog(
     context: context,
     barrierColor: clearBarrierColor ? Colors.transparent : Colors.blueGrey.withOpacity(0.3),
-    builder: (_) {
-      return Container(
-        padding: EdgeInsets.only(top: paddingTop, right: paddingRight, bottom: paddingBottom, left: paddingLeft),
-        child: Dialog(
-          backgroundColor: Colors.blueGrey.withOpacity(0.3),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-          insetPadding: const EdgeInsets.all(30),
-          child: widget,
+    builder: (BuildContext ctx) {
+      return MediaQuery(
+        data: MediaQuery.of(ctx).copyWith(
+        viewInsets: EdgeInsets.zero,
+        padding: MediaQuery.of(ctx).viewPadding,
+      ),
+        child: Container(
+          padding: EdgeInsets.only(top: paddingTop, right: paddingRight, bottom: paddingBottom, left: paddingLeft),
+          child: Dialog(
+            backgroundColor: Colors.blueGrey.withOpacity(0.3),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+            insetPadding: const EdgeInsets.all(30),
+            child: widget,
+          ),
         ),
       );
     },

@@ -12,6 +12,7 @@ import '../../controllers/controllers_mixin.dart';
 import '../../model/pref_train_station_model.dart';
 import '../../utility/functions.dart';
 import '../../utility/shared_preferences_service.dart';
+import '../parts/error_dialog.dart';
 
 class PrefTrainStationDisplayAlert extends ConsumerStatefulWidget {
   const PrefTrainStationDisplayAlert({super.key, required this.prefName});
@@ -123,52 +124,86 @@ class _PrefTrainStationDisplayAlertState extends ConsumerState<PrefTrainStationD
                           prefName: widget.prefName,
                           polylinePoints: _polylinePoints,
                           mapController: _mapController,
+                          selectedLatLng: _selectedStation != null
+                              ? LatLng(_selectedStation!.lat, _selectedStation!.lng)
+                              : null,
                         ),
                       ),
 
                       // 電車リスト（検索ボタン分だけ上に隙間）
-                      Positioned.fill(top: 60, child: displayPrefTrainList()),
+                      Positioned.fill(top: 110, child: displayPrefTrainList()),
 
                       Positioned(
                         top: 5,
                         right: 10,
                         left: 10,
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: <Widget>[
-                            // 検索ボタン（BottomSheetを開く）
-                            ElevatedButton.icon(
-                              onPressed: () => _showSearchBottomSheet(context),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.pinkAccent.withValues(alpha: 0.2),
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                              ),
+                            const Text('目的地の駅を選択してください。', style: TextStyle(fontSize: 10)),
 
-                              icon: const Icon(Icons.search, color: Colors.white, size: 18),
-                              label: const Text('駅名検索', style: TextStyle(color: Colors.white, fontSize: 12)),
+                            const DefaultTextStyle(
+                              style: TextStyle(fontSize: 10),
+                              child: Row(
+                                children: <Widget>[
+                                  Icon(Icons.stacked_line_chart, size: 15),
+                                  SizedBox(width: 5),
+                                  Text('路線図'),
+                                  SizedBox(width: 20),
+                                  Icon(Icons.pages, size: 15),
+                                  SizedBox(width: 5),
+                                  Text('路線全域'),
+                                ],
+                              ),
                             ),
 
-                            ElevatedButton.icon(
-                              onPressed: () async {
-                                final PrefStationModel? station = _selectedStation;
-                                if (station == null) {
-                                  return;
-                                }
-                                await _registerGeofence(station);
+                            const SizedBox(height: 5),
 
-                                if (context.mounted) {
-                                  Navigator.pop(context);
-                                }
-                              },
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: (_selectedStation != null)
-                                    ? Colors.yellowAccent.withValues(alpha: 0.4)
-                                    : Colors.pinkAccent.withValues(alpha: 0.2),
-                              ),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: <Widget>[
+                                // 検索ボタン（BottomSheetを開く）
+                                ElevatedButton.icon(
+                                  onPressed: () => _showSearchBottomSheet(context),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.pinkAccent.withValues(alpha: 0.2),
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                  ),
 
-                              icon: const Icon(Icons.location_on, color: Colors.white, size: 18),
-                              label: const Text('設定', style: TextStyle(color: Colors.white, fontSize: 12)),
+                                  icon: const Icon(Icons.search, color: Colors.white, size: 18),
+                                  label: const Text('駅名検索', style: TextStyle(color: Colors.white, fontSize: 12)),
+                                ),
+
+                                ElevatedButton.icon(
+                                  onPressed: () async {
+                                    final PrefStationModel? station = _selectedStation;
+                                    if (station == null) {
+                                      await error_dialog(
+                                        context: context,
+                                        title: '駅が選択されていません',
+                                        content: '目的地の駅を選択してから設定ボタンを押してください。',
+                                      );
+                                      return;
+                                    }
+                                    await _registerGeofence(station);
+
+                                    if (context.mounted) {
+                                      Navigator.pop(context);
+                                    }
+                                  },
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: (_selectedStation != null)
+                                        ? Colors.yellowAccent.withValues(alpha: 0.4)
+                                        : Colors.pinkAccent.withValues(alpha: 0.2),
+                                  ),
+
+                                  icon: const Icon(Icons.location_on, color: Colors.white, size: 18),
+                                  label: const Text('設定', style: TextStyle(color: Colors.white, fontSize: 12)),
+                                ),
+                              ],
                             ),
+
+                            Divider(color: Colors.white.withValues(alpha: 0.5), thickness: 5),
                           ],
                         ),
                       ),
@@ -229,6 +264,14 @@ class _PrefTrainStationDisplayAlertState extends ConsumerState<PrefTrainStationD
               backgroundColor: Colors.white.withOpacity(0.2),
               iconColor: Colors.white,
               collapsedIconColor: Colors.white,
+              onExpansionChanged: (bool expanded) async {
+                if (!expanded && _selectedStation != null) {
+                  if (train.station.any((PrefStationModel s) => s.id == _selectedStation!.id)) {
+                    setState(() => _selectedStation = null);
+                    await SharedPreferencesService.removeSelectedStation();
+                  }
+                }
+              },
               title: Text(
                 train.trainName,
                 style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 12),
@@ -245,9 +288,14 @@ class _PrefTrainStationDisplayAlertState extends ConsumerState<PrefTrainStationD
                       child: Row(
                         children: <Widget>[
                           GestureDetector(
-                            onTap: () {
-                              setState(() => _selectedStation = s);
-                              SharedPreferencesService.saveSelectedStation(jsonEncode(s.toJson()));
+                            onTap: () async {
+                              if (_selectedStation?.id == s.id) {
+                                setState(() => _selectedStation = null);
+                                await SharedPreferencesService.removeSelectedStation();
+                              } else {
+                                setState(() => _selectedStation = s);
+                                await SharedPreferencesService.saveSelectedStation(jsonEncode(s.toJson()));
+                              }
                             },
                             child: CircleAvatar(
                               backgroundColor: (_selectedStation != null && _selectedStation!.id == s.id)
@@ -354,7 +402,7 @@ class _PrefTrainStationDisplayAlertState extends ConsumerState<PrefTrainStationD
                       icon: Icon(
                         Icons.pages,
                         color: (_isBoundsActive && _selectedTrainName == train.trainName)
-                            ? Colors.yellow
+                            ? Colors.greenAccent
                             : Colors.white,
                       ),
                     ),
@@ -403,7 +451,7 @@ class _PrefTrainStationDisplayAlertState extends ConsumerState<PrefTrainStationD
                     },
                     icon: Icon(
                       Icons.stacked_line_chart,
-                      color: _selectedTrainName == train.trainName ? Colors.yellow : Colors.white,
+                      color: _selectedTrainName == train.trainName ? Colors.greenAccent : Colors.white,
                     ),
                   ),
                 ],
@@ -498,11 +546,13 @@ class PrefectureMapWidget extends StatefulWidget {
     required this.prefName,
     required this.polylinePoints,
     required this.mapController,
+    this.selectedLatLng,
   });
 
   final String prefName;
   final List<LatLng> polylinePoints;
   final MapController mapController;
+  final LatLng? selectedLatLng;
 
   @override
   State<PrefectureMapWidget> createState() => _PrefectureMapWidgetState();
@@ -586,7 +636,11 @@ class _PrefectureMapWidgetState extends State<PrefectureMapWidget> {
             if (widget.polylinePoints.length >= 2) ...<Widget>[
               PolylineLayer<String>(
                 polylines: <Polyline<String>>[
-                  Polyline<String>(points: widget.polylinePoints, color: Colors.red.withOpacity(0.4), strokeWidth: 20),
+                  Polyline<String>(
+                    points: widget.polylinePoints,
+                    color: Colors.greenAccent.withOpacity(0.4),
+                    strokeWidth: 20,
+                  ),
                 ],
               ),
             ],
@@ -594,12 +648,19 @@ class _PrefectureMapWidgetState extends State<PrefectureMapWidget> {
             if (widget.polylinePoints.isNotEmpty) ...<Widget>[
               MarkerLayer(
                 markers: widget.polylinePoints.map((LatLng point) {
+                  final bool isSelected =
+                      widget.selectedLatLng != null &&
+                      point.latitude == widget.selectedLatLng!.latitude &&
+                      point.longitude == widget.selectedLatLng!.longitude;
                   return Marker(
                     point: point,
-                    width: 7,
-                    height: 7,
+                    width: isSelected ? 14 : 7,
+                    height: isSelected ? 14 : 7,
                     child: Container(
-                      decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                      decoration: BoxDecoration(
+                        color: isSelected ? Colors.yellowAccent : Colors.white,
+                        shape: BoxShape.circle,
+                      ),
                     ),
                   );
                 }).toList(),

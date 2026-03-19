@@ -22,6 +22,9 @@ class PrefTrainStationState with _$PrefTrainStationState {
     @Default(<PrefTrainModel>[]) List<PrefTrainModel> prefTrainList,
     @Default(<String, PrefTrainModel>{}) Map<String, PrefTrainModel> prefTrainMap,
     @Default(<String, List<PrefTrainModel>>{}) Map<String, List<PrefTrainModel>> prefStationTokyoTrainModelListMap,
+
+    /// 現在地から半径X km圏内の全駅リスト
+    @Default(<PrefStationModel>[]) List<PrefStationModel> nearbyStations,
   }) = _PrefTrainStationState;
 }
 
@@ -223,6 +226,22 @@ class PrefTrainStation extends _$PrefTrainStation {
 
       state = newState;
     } catch (_) {}
+  }
+
+  /// 複数県の全駅を取得して nearbyStations にまとめて保存する
+  Future<void> fetchNearbyStations({required List<String> prefNames}) async {
+    final List<PrefStationModel> allStations = <PrefStationModel>[];
+
+    for (final String prefName in prefNames) {
+      try {
+        final PrefTrainStationState prefState = await fetchPrefTrainStationData(prefName: prefName);
+        for (final PrefTrainModel train in prefState.prefTrainList) {
+          allStations.addAll(train.station);
+        }
+      } catch (_) {}
+    }
+
+    state = state.copyWith(nearbyStations: allStations);
   }
 
   //============================================== api

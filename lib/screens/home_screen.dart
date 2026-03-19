@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
@@ -13,8 +15,10 @@ import 'package:vibration/vibration.dart';
 
 import '../controllers/controllers_mixin.dart';
 import '../extensions/extensions.dart';
+import '../utility/functions.dart';
 import '../utility/shared_preferences_service.dart';
 import '../utility/utility.dart';
+import 'components/near_by_tations_display_alert.dart';
 import 'components/pref_train_station_display_alert.dart';
 import 'parts/arsta_dialog.dart';
 
@@ -41,6 +45,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
   LatLng? _selectedStationLatLng;
 
   Position? _currentPosition;
+  Timer? _positionTimer;
+  List<String> _lastNearbyPrefNames = <String>[];
 
   final MapController _mapController = MapController();
 
@@ -51,14 +57,60 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
   void initState() {
     super.initState();
     _future = _loadPrefecturePolygonData();
-    _checkPermissions();
-    _loadSelectedStation();
-    _fetchCurrentPosition();
+    _initPlugins();
+    _startPositionStream();
+  }
+
+  ///
+  Future<void> _initPlugins() async {
+    const InitializationSettings initSettings = InitializationSettings(
+      android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+      iOS: DarwinInitializationSettings(),
+    );
+    await FlutterLocalNotificationsPlugin().initialize(settings: initSettings);
+
+    await NativeGeofenceManager.instance.initialize();
+
+    await _checkPermissions();
+    await _loadSelectedStation();
+    await _restoreGeofence();
+  }
+
+  ///
+  Future<void> _restoreGeofence() async {
+    final String? json = await SharedPreferencesService.loadSelectedStation();
+    if (json == null) {
+      return;
+    }
+    try {
+      final Map<String, dynamic> map = jsonDecode(json) as Map<String, dynamic>;
+      final double? lat = (map['lat'] as num?)?.toDouble();
+      final double? lng = (map['lng'] as num?)?.toDouble();
+      final String? stationName = map['station_name'] as String?;
+      if (lat == null || lng == null || stationName == null) {
+        return;
+      }
+      final Geofence zone = Geofence(
+        id: 'station_$stationName',
+        location: Location(latitude: lat, longitude: lng),
+        radiusMeters: 1000,
+        triggers: <GeofenceEvent>{GeofenceEvent.enter},
+        iosSettings: const IosGeofenceSettings(initialTrigger: true),
+        androidSettings: const AndroidGeofenceSettings(
+          initialTriggers: <GeofenceEvent>{GeofenceEvent.enter},
+          expiration: Duration(days: 7),
+          loiteringDelay: Duration(minutes: 1),
+          notificationResponsiveness: Duration(seconds: 10),
+        ),
+      );
+      await NativeGeofenceManager.instance.createGeofence(zone, geofenceCallback);
+    } catch (_) {}
   }
 
   ///
   @override
   void dispose() {
+    _positionTimer?.cancel();
     _hitNotifier.dispose();
     super.dispose();
   }
@@ -200,13 +252,94 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
   }
 
   ///
+  Future<void> _startPositionStream() async {
+    await _fetchCurrentPosition();
+    _positionTimer = Timer.periodic(const Duration(seconds: 10), (_) => _fetchCurrentPosition());
+  }
+
+  // 半径何キロ圏内を検索するか（変更可能）
+  static const double _nearbyRadiusKm = 10.0;
+
+  ///
   Future<void> _fetchCurrentPosition() async {
     try {
       final Position position = await Geolocator.getCurrentPosition();
+
+      final List<PrefecturePolygonData> polygonDataList = await _future;
+      final List<String> nearby = _findNearbyPrefectures(
+        LatLng(position.latitude, position.longitude),
+        polygonDataList,
+      );
+
+      // 前回と県リストが変わった時だけ駅データを再取得する
+      final List<String> sorted = List<String>.from(nearby)..sort();
+      final List<String> lastSorted = List<String>.from(_lastNearbyPrefNames)..sort();
+      if (sorted.join(',') != lastSorted.join(',')) {
+        _lastNearbyPrefNames = nearby;
+
+        prefTrainNotifier.fetchNearbyStations(prefNames: nearby);
+      }
+
       if (mounted) {
         setState(() => _currentPosition = position);
       }
     } catch (_) {}
+  }
+
+  ///
+  List<String> _findNearbyPrefectures(LatLng current, List<PrefecturePolygonData> dataList) {
+    final List<String> result = <String>[];
+
+    for (final PrefecturePolygonData data in dataList) {
+      bool isNearby = false;
+
+      for (final _PolygonParts part in data.polygonParts) {
+        // 現在地がポリゴン内にあれば距離0（確実に含む）
+        if (_pointInPolygon(current, part.outerPoints)) {
+          isNearby = true;
+          break;
+        }
+        // 境界頂点が半径以内にあるか
+        for (final LatLng point in part.outerPoints) {
+          if (utility.calculateDistance(current, point) / 1000 <= _nearbyRadiusKm) {
+            isNearby = true;
+            break;
+          }
+        }
+        if (isNearby) {
+          break;
+        }
+      }
+
+      if (isNearby) {
+        result.add(data.name);
+      }
+    }
+
+    return result;
+  }
+
+  ///
+  bool _pointInPolygon(LatLng point, List<LatLng> polygon) {
+    if (polygon.length < 3) {
+      return false;
+    }
+    bool inside = false;
+    int j = polygon.length - 1;
+    for (int i = 0; i < polygon.length; i++) {
+      final double xi = polygon[i].longitude;
+      final double yi = polygon[i].latitude;
+      final double xj = polygon[j].longitude;
+      final double yj = polygon[j].latitude;
+      final bool intersect =
+          ((yi > point.latitude) != (yj > point.latitude)) &&
+          (point.longitude < (xj - xi) * (point.latitude - yi) / (yj - yi) + xi);
+      if (intersect) {
+        inside = !inside;
+      }
+      j = i;
+    }
+    return inside;
   }
 
   ///
@@ -453,7 +586,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: <Widget>[
-                      const SizedBox.shrink(),
+                      IconButton(
+                        onPressed: () {
+                          ArstaDialog(
+                            context: context,
+                            widget: NearByStationsDisplayAlert(currentPosition: _currentPosition),
+                          );
+                        },
+                        icon: const Icon(Icons.gps_fixed),
+                      ),
+
                       ElevatedButton(
                         onPressed: () {
                           setState(() => _selectedPrefectureName = null);
