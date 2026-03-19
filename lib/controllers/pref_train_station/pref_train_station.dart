@@ -44,7 +44,7 @@ class PrefTrainStation extends _$PrefTrainStation {
   ///
   /// 【処理の流れ】
   /// 1. getTrain API       : 路線番号 → 路線名 の対応表を作成
-  /// 2. getAllStation API   : 全国駅データを取得し、路線名・路線番号でインデックス化
+  /// 2. getAllStation API   : 全国駅データを取得し、路線名でインデックス化
   /// 3. getPrefTrainStation API : 対象都道府県の路線・駅データを取得し、以下の補正を適用
   ///    ① stationMap補正   : 路線名が stationMap に存在する場合、駅名セットが異なれば駅順を補正
   ///    ② patchMap適用     : utility の手動パッチデータが存在する路線はそれを正として駅リストを完全置換
@@ -123,7 +123,7 @@ class PrefTrainStation extends _$PrefTrainStation {
             }
           }
 
-          // --- 補正③ patchMap適用 ---
+          // --- 補正② patchMap適用 ---
           // utility.getStationDataRepairPrefStationModel に定義された手動パッチが存在する場合、
           // パッチデータを正として駅リストを完全再構築する
           // ・APIが返さない駅の補完（例: 京王新線の新宿）
@@ -200,9 +200,9 @@ class PrefTrainStation extends _$PrefTrainStation {
     state = state.copyWith(nearbyStations: allStations);
   }
 
-  //============================================== api
+  //============================================== private
 
-  /// stationMapまたはrepairの駅リストを使ってPrefTrainModelの駅順を補正する
+  /// stationMapの駅リストを使ってPrefTrainModelの駅順を補正する
   /// APIデータを主とし、並び順が異なる場合のみstationMapの順序でソートする
   PrefTrainModel _correctByStationMap({required PrefTrainModel val, required List<StationModel> smStations}) {
     // stationMapの駅名→順序インデックスを作成
