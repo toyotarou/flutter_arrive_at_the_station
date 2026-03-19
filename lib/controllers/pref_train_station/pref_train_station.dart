@@ -47,8 +47,7 @@ class PrefTrainStation extends _$PrefTrainStation {
   /// 2. getAllStation API   : 全国駅データを取得し、路線名・路線番号でインデックス化
   /// 3. getPrefTrainStation API : 対象都道府県の路線・駅データを取得し、以下の補正を適用
   ///    ① stationMap補正   : 路線名が stationMap に存在する場合、駅名セットが異なれば駅順を補正
-  ///    ② repairTrainNumber補正 : stationMap にない路線（JR八高線等）は複数の路線番号をマージして補正
-  ///    ③ patchMap適用     : utility の手動パッチデータが存在する路線はそれを正として駅リストを完全置換
+  ///    ② patchMap適用     : utility の手動パッチデータが存在する路線はそれを正として駅リストを完全置換
   ///                         （APIが返さない駅の追加・誤座標の修正・駅順の確定に使用）
   Future<PrefTrainStationState> fetchPrefTrainStationData({required String prefName}) async {
     final HttpClient client = ref.read(httpClientProvider);
@@ -72,11 +71,9 @@ class PrefTrainStation extends _$PrefTrainStation {
 
       // -----------------------------------------------
       // ② getAllStation: 全駅データを取得
-      //    stationMap          : 路線名 → 駅リスト（駅順補正の参照元）
-      //    lineNumberToStationsMap : 路線番号 → 駅リスト（repairTrainNumber補正用）
+      //    stationMap : 路線名 → 駅リスト（駅順補正の参照元）
       // -----------------------------------------------
       final Map<String, List<StationModel>> stationMap = <String, List<StationModel>>{};
-      final Map<String, List<StationModel>> lineNumberToStationsMap = <String, List<StationModel>>{};
 
       // ignore: always_specify_types
       await client.post(path: APIPath.getAllStation).then((value) {
@@ -90,8 +87,6 @@ class PrefTrainStation extends _$PrefTrainStation {
           if (trainName != null) {
             (stationMap[trainName] ??= <StationModel>[]).add(val);
           }
-
-          (lineNumberToStationsMap[val.lineNumber] ??= <StationModel>[]).add(val);
         }
       });
 
@@ -126,30 +121,6 @@ class PrefTrainStation extends _$PrefTrainStation {
             if (apiStationNames != smStationNames) {
               val = _correctByStationMap(val: val, smStations: smStations);
             }
-          } else {
-            // --- 補正② repairTrainNumber補正 ---
-            // stationMap に路線名が存在しない路線（getAllStation と路線名が異なるケース）
-            // utility.getRepairTrainNumber で対応する路線番号を取得してマージ
-            // 例: JR八高線（2路線番号をマージ）、わたらせ渓谷鐵道線、上信電鉄上信線
-            final List<String> repairNumbers = dataRepair.getRepairTrainNumber(trainName: val.trainName);
-            if (repairNumbers.isNotEmpty) {
-              // 複数の路線番号の駅を結合（重複駅名は先着優先で除去）
-              final List<StationModel> merged = <StationModel>[];
-              final Set<String> seen = <String>{};
-              for (final String lineNum in repairNumbers) {
-                for (final StationModel s in lineNumberToStationsMap[lineNum] ?? <StationModel>[]) {
-                  if (seen.add(s.stationName)) {
-                    merged.add(s);
-                  }
-                }
-              }
-              final Set<String> mergedNames = merged.map((StationModel s) => s.stationName).toSet();
-              if (apiStationNames != mergedNames) {
-                val = _correctByStationMap(val: val, smStations: merged);
-              }
-            }
-            // repairNumbers が空の路線はどちらの補正も行わず getPrefTrainStation のデータをそのまま使用
-            // 例: 上毛電鉄・上越新幹線・北陸新幹線
           }
 
           // --- 補正③ patchMap適用 ---
@@ -178,21 +149,6 @@ class PrefTrainStation extends _$PrefTrainStation {
             patched.sort((PrefStationModel a, PrefStationModel b) => a.order.compareTo(b.order));
             val = PrefTrainModel(trainNumber: val.trainNumber, trainName: val.trainName, station: patched);
           }
-
-          //残しておく（駅順検証用デバッグコード）
-          // getStationDataRepairValue の期待順序と API の実際の順序を照合する
-          // 不一致の路線を特定するために使用した。現在は patchMap で対処済み
-          /*
-          final List<String>? repairStations = repairMap[prefName]?[val.trainName];
-          if (repairStations != null) {
-            if (originalApiNames.join(',') == repairStations.join(',')) {
-              print('✅ API一致（getStationDataRepairValueから削除可）: $prefName | ${val.trainName}');
-            } else {
-              print('❌ API不一致 → getStationDataRepairValue で補正: $prefName | ${val.trainName}');
-              val = _correctByNameOrder(val: val, nameOrder: repairStations);
-            }
-          }
-          */
 
           list.add(val);
 
@@ -245,32 +201,6 @@ class PrefTrainStation extends _$PrefTrainStation {
   }
 
   //============================================== api
-
-  //残しておく
-  // /// getStationDataRepairValue の駅名順リストを使って駅順を補正する
-  // PrefTrainModel _correctByNameOrder({required PrefTrainModel val, required List<String> nameOrder}) {
-  //   final Map<String, int> orderMap = <String, int>{};
-  //   for (int i = 0; i < nameOrder.length; i++) {
-  //     orderMap[nameOrder[i]] = i;
-  //   }
-  //
-  //   final List<PrefStationModel> sorted = List<PrefStationModel>.from(val.station);
-  //   sorted.sort((PrefStationModel a, PrefStationModel b) {
-  //     final int idxA = orderMap[a.stationName] ?? nameOrder.length;
-  //     final int idxB = orderMap[b.stationName] ?? nameOrder.length;
-  //     return idxA.compareTo(idxB);
-  //   });
-  //
-  //   final List<PrefStationModel> corrected = <PrefStationModel>[];
-  //   for (int i = 0; i < sorted.length; i++) {
-  //     final PrefStationModel s = sorted[i];
-  //     corrected.add(
-  //       PrefStationModel(id: s.id, stationName: s.stationName, address: s.address, lat: s.lat, lng: s.lng, order: i),
-  //     );
-  //   }
-  //
-  //   return PrefTrainModel(trainNumber: val.trainNumber, trainName: val.trainName, station: corrected);
-  // }
 
   /// stationMapまたはrepairの駅リストを使ってPrefTrainModelの駅順を補正する
   /// APIデータを主とし、並び順が異なる場合のみstationMapの順序でソートする

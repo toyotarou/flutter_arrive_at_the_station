@@ -39,7 +39,7 @@
 | 駅選択・ジオフェンス設定 | 一覧または近傍マップから駅を選択し、ワンタップでジオフェンスを登録 |
 | 降車通知 | 圏内進入時にプッシュ通知とループバイブレーション（最大強度）で通知 |
 | 選択駅の永続化 | SharedPreferencesに選択駅JSONを保存し、アプリ再起動後にジオフェンスを復元 |
-| APIデータ補正 | stationMap補正・repairTrainNumber補正・patchMap適用の3段階でデータ品質を担保 |
+| APIデータ補正 | stationMap補正・patchMap適用の2段階でデータ品質を担保 |
 
 ### 1.3 動作環境
 
@@ -758,18 +758,13 @@ class HttpClient {
 
 ### 7.3 データ補正ロジック（DataRepair）の詳細
 
-`fetchPrefTrainStationData` 内で3段階の補正を適用する:
+`fetchPrefTrainStationData` 内で2段階の補正を適用する:
 
 **補正① stationMap補正:**
 - `stationMap`（getAllStationの路線名→駅リスト）に同名路線が存在し、駅名セットが異なる場合に駅順を補正
 - 例: JR千歳線、JR宗谷本線、JR釧網本線など
 
-**補正② repairTrainNumber補正:**
-- `stationMap` に路線名が存在しない路線（stationMapとの路線名が異なる）に適用
-- `DataRepair.getRepairTrainNumber(trainName: ...)` で対応する路線番号リストを取得してマージ
-- 例: JR八高線（2路線番号をマージ）、わたらせ渓谷鐵道線など
-
-**補正③ patchMap適用:**
+**補正② patchMap適用:**
 - `DataRepair.getStationDataRepairPrefStationModel()` の手動定義データが存在する路線に適用
 - パッチデータの駅リストで完全置換（APIの誤座標・欠落駅・誤順序を修正）
 - 例: 京王新線の新宿駅追加、JR宗谷本線の石北本線混入修正など

@@ -353,12 +353,11 @@
 ### F-18 APIデータ補正
 
 ```
-概要:    APIから取得した駅データの誤りを3段階のロジックで補正する
+概要:    APIから取得した駅データの誤りを2段階のロジックで補正する
 入力:    getPrefTrainStation APIのレスポンス
 処理の流れ:
   ① stationMap補正   : getAllStation の駅順と異なる場合に駅順を補正する
-  ② repairTrainNumber補正 : stationMapにない路線（複数路線番号をマージ）の補正
-  ③ patchMap適用     : DataRepairクラスの手動パッチデータで駅リストを完全置換する
+  ② patchMap適用     : DataRepairクラスの手動パッチデータで駅リストを完全置換する
 出力:    補正済みの PrefTrainModel リスト
 ```
 
