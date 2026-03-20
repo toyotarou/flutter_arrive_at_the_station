@@ -315,13 +315,21 @@ class _PrefTrainStationDisplayAlertState extends ConsumerState<PrefTrainStationD
                                   right: 0,
                                   child: Text(
                                     '${s.lat} / ${s.lng}',
-                                    style: const TextStyle(color: Colors.grey, fontSize: 10),
+                                    style: const TextStyle(
+                                      color: Colors.grey,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                    ),
                                   ),
                                 ),
 
                                 Text(
                                   s.stationName,
-                                  style: const TextStyle(color: Colors.white, fontSize: 12),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
