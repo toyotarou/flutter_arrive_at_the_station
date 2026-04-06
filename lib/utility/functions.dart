@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:typed_data';
 import 'dart:ui';
 
@@ -9,6 +10,7 @@ import 'package:native_geofence/native_geofence.dart';
 import 'package:vibration/vibration.dart';
 
 import '../const/const.dart';
+import 'shared_preferences_service.dart';
 
 /// =======================
 /// Geofence コールバック（トップレベル必須）
@@ -66,4 +68,11 @@ Future<void> geofenceCallback(GeofenceCallbackParams params) async {
       await Vibration.vibrate(pattern: kVibrationPattern, intensities: kVibrationIntensities, repeat: 0);
     }
   }
+
+  // アラートフラグを SharedPreferences に保存する（バックグラウンド起動後の復元用）
+  await SharedPreferencesService.saveGeofencePendingAlert();
+
+  // アプリが前面にある場合、UI isolate へ直接通知してダイアログを表示させる
+  final SendPort? uiPort = IsolateNameServer.lookupPortByName('geofence_alert_port');
+  uiPort?.send(null);
 }

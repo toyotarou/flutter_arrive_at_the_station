@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -21,6 +23,7 @@ import '../utility/utility.dart';
 import 'components/near_by_tations_display_alert.dart';
 import 'components/pref_train_station_display_alert.dart';
 import 'parts/arsta_dialog.dart';
+import 'parts/geofence_alert_dialog.dart';
 
 ////////////////////////////////////////////////////////////////////////
 
@@ -31,7 +34,7 @@ class HomeScreen extends ConsumerStatefulWidget {
   ConsumerState<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<HomeScreen> {
+class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<HomeScreen>, WidgetsBindingObserver {
   late final Future<List<PrefecturePolygonData>> _future;
 
   // ignore: always_specify_types
@@ -52,13 +55,26 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
 
   Utility utility = Utility();
 
+  final ReceivePort _geofencePort = ReceivePort();
+  bool _isAlertDialogShowing = false;
+  final FocusNode _dummyFocusNode = FocusNode();
+
   ///
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _future = _loadPrefecturePolygonData();
     _initPlugins();
     _startPositionStream();
+    _registerGeofencePort();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkAndShowPendingGeofenceAlert();
+    }
   }
 
   ///
@@ -74,6 +90,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
     await _checkPermissions();
     await _loadSelectedStation();
     await _restoreGeofence();
+
+    // 起動前にジオフェンスが発火していた場合はダイアログを表示する
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkAndShowPendingGeofenceAlert());
   }
 
   ///
@@ -108,10 +127,62 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
   }
 
   ///
+  ///
+  Future<void> _checkAndShowPendingGeofenceAlert() async {
+    final bool pending = await SharedPreferencesService.loadGeofencePendingAlert();
+    if (pending && mounted && !_isAlertDialogShowing) {
+      _showGeofenceAlertDialog();
+    }
+  }
+
+  void _registerGeofencePort() {
+    IsolateNameServer.removePortNameMapping('geofence_alert_port');
+    IsolateNameServer.registerPortWithName(_geofencePort.sendPort, 'geofence_alert_port');
+    _geofencePort.listen((_) {
+      if (mounted && !_isAlertDialogShowing) {
+        _dummyFocusNode.requestFocus();
+        _showGeofenceAlertDialog();
+      }
+    });
+  }
+
+  ///
+  Future<void> _showGeofenceAlertDialog() async {
+    if (!mounted) {
+      return;
+    }
+    _isAlertDialogShowing = true;
+
+    final String stationName = _selectedStationName ?? '目的地';
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext ctx) => GeofenceAlertDialog(
+        stationName: stationName,
+        onStop: () async {
+          Navigator.pop(ctx);
+          await SharedPreferencesService.clearGeofencePendingAlert();
+          await _removeAllGeofences();
+        },
+      ),
+    );
+
+    _isAlertDialogShowing = false;
+  }
+
+  ///
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    IsolateNameServer.removePortNameMapping('geofence_alert_port');
+    _geofencePort.close();
     _positionTimer?.cancel();
     _hitNotifier.dispose();
+    _dummyFocusNode.dispose();
+    if (Platform.isAndroid) {
+      Vibration.cancel();
+    }
     super.dispose();
   }
 
@@ -398,6 +469,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
     final List<Color> fortyEightColor = utility.getFortyEightColor();
 
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       appBar: AppBar(
         title: const Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -449,7 +521,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
 
           GestureDetector(
             onTap: () async {
-              // appParamNotifier.setIsSetStation(flag: false);
               await _removeAllGeofences();
             },
             child: const Column(
@@ -540,6 +611,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
 
           return Column(
             children: <Widget>[
+              Focus(focusNode: _dummyFocusNode, autofocus: true, child: const SizedBox.shrink()),
+
               const SizedBox(height: 16),
 
               Center(

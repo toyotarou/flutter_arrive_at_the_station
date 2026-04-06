@@ -25,4 +25,26 @@ class SharedPreferencesService {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     await prefs.remove(_kSelectedStation);
   }
+
+  // ─── geofencePendingAlert ────────────────────────────
+
+  static const String kGeofencePendingAlert = 'geofence_pending_alert';
+
+  /// ジオフェンス発火済みフラグを保存する
+  static Future<void> saveGeofencePendingAlert() async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(kGeofencePendingAlert, true);
+  }
+
+  /// ジオフェンス発火済みフラグを読み込む
+  static Future<bool> loadGeofencePendingAlert() async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(kGeofencePendingAlert) ?? false;
+  }
+
+  /// ジオフェンス発火済みフラグをクリアする
+  static Future<void> clearGeofencePendingAlert() async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.remove(kGeofencePendingAlert);
+  }
 }

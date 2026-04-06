@@ -265,8 +265,10 @@ class PrefStationModel {
 | キー名 | 型 | 保存タイミング | 削除タイミング |
 |---|---|---|---|
 | `'selectedStation'` | `String`（JSON） | 駅タップ時 | 監視停止ボタン（stop）タップ時 |
+| `'geofence_pending_alert'` | `bool`（true固定） | geofenceCallback 内（バックグラウンド発火時） | ダイアログを閉じてジオフェンス解除時 |
 
 > **補足：** 選択駅は `PrefStationModel.toJson()` でJSONに変換して保存し、復元時は `PrefStationModel.fromJson()` でパースする。
+> `geofence_pending_alert` は発火を示すフラグのみで、値は常に `true`。フラグの存在有無で判定する。
 
 ---
 
@@ -368,10 +370,16 @@ MyApp (ConsumerStatefulWidget):
 - `List<String> _lastNearbyPrefNames` — 前回の近傍都道府県リスト（変化検出用）
 - `MapController _mapController` — flutter_mapのカメラ制御
 
+**ローカル状態・コントローラー（追加分）:**
+- `bool _isAlertDialogShowing` — ダイアログ重複表示防止フラグ
+- `FocusNode _dummyFocusNode` — ダイアログ表示前にフォーカスを確保するためのFocusNode
+
 **初期化処理（initState）:**
-1. `_loadPrefecturePolygonData()` — assets/json/japan_pref.json をパースして `_future` に格納
-2. `_initPlugins()` — 通知初期化・ジオフェンス初期化・パーミッション確認・選択駅復元・ジオフェンス復元
-3. `_startPositionStream()` — GPS取得を開始（初回即時 + 10秒Timer）
+1. `WidgetsBinding.instance.addObserver(this)` — AppLifecycleState 監視登録
+2. `_loadPrefecturePolygonData()` — assets/json/japan_pref.json をパースして `_future` に格納
+3. `_initPlugins()` — 通知初期化・ジオフェンス初期化・パーミッション確認・選択駅復元・ジオフェンス復元・発火済みフラグ確認
+4. `_startPositionStream()` — GPS取得を開始（初回即時 + 10秒Timer）
+5. `_registerGeofencePort()` — ReceivePort を登録し、バックグラウンドからのIsolate通知を受け取る
 
 **`_initPlugins()` の処理詳細:**
 
@@ -381,7 +389,34 @@ MyApp (ConsumerStatefulWidget):
 3. _checkPermissions() → _permissionsGranted を更新
 4. _loadSelectedStation() → SharedPreferences から選択駅を復元
 5. _restoreGeofence() → SharedPreferences からジオフェンスを復元・再登録
+6. WidgetsBinding.instance.addPostFrameCallback((_) => _checkAndShowPendingGeofenceAlert())
+   → アプリ起動前にジオフェンスが発火していた場合のダイアログ表示
 ```
+
+**`_checkAndShowPendingGeofenceAlert()` の処理:**
+
+```dart
+Future<void> _checkAndShowPendingGeofenceAlert() async {
+  final bool pending = await SharedPreferencesService.loadGeofencePendingAlert();
+  if (pending && mounted && !_isAlertDialogShowing) {
+    _showGeofenceAlertDialog();
+  }
+}
+```
+
+**AppLifecycleState 監視（`didChangeAppLifecycleState`）:**
+
+```dart
+@override
+void didChangeAppLifecycleState(AppLifecycleState state) {
+  if (state == AppLifecycleState.resumed) {
+    _checkAndShowPendingGeofenceAlert();
+  }
+}
+```
+
+> **目的：** アプリがバックグラウンドに回っている間にジオフェンスが発火した場合、
+> ユーザーがアプリを前面に戻した瞬間（resumed）にダイアログを自動表示するため。
 
 **`_restoreGeofence()` の処理詳細:**
 
@@ -421,6 +456,48 @@ final String dist = meters >= 1000
     ? '${(meters / 1000).toStringAsFixed(1)}km'
     : '${meters.toStringAsFixed(0)}m';
 ```
+
+**`_showGeofenceAlertDialog()` の処理:**
+
+```dart
+Future<void> _showGeofenceAlertDialog() async {
+  if (!mounted) return;
+  _isAlertDialogShowing = true;
+  final String stationName = _selectedStationName ?? '目的地';
+  await showDialog<void>(
+    context: context,
+    barrierDismissible: false,
+    builder: (BuildContext ctx) => GeofenceAlertDialog(
+      stationName: stationName,
+      onStop: () async {
+        Navigator.pop(ctx);
+        await SharedPreferencesService.clearGeofencePendingAlert(); // フラグ削除
+        await _removeAllGeofences();
+      },
+    ),
+  );
+  _isAlertDialogShowing = false;
+}
+```
+
+**`_registerGeofencePort()` の処理（IsolateNameServer経由の通知受信）:**
+
+```dart
+void _registerGeofencePort() {
+  IsolateNameServer.removePortNameMapping('geofence_alert_port');
+  IsolateNameServer.registerPortWithName(_geofencePort.sendPort, 'geofence_alert_port');
+  _geofencePort.listen((_) {
+    if (mounted && !_isAlertDialogShowing) {
+      _dummyFocusNode.requestFocus(); // フォーカス確保
+      _showGeofenceAlertDialog();
+    }
+  });
+}
+```
+
+> **補足：** `_dummyFocusNode` は `Focus(focusNode: _dummyFocusNode, autofocus: true)` として
+> build メソッド内の Column 先頭に配置する。ダイアログ表示前にフォーカスを確保することで
+> キーボードが意図せず開くことを防ぐ。
 
 **`_removeAllGeofences()` の処理:**
 
@@ -663,6 +740,13 @@ Future<void> geofenceCallback(GeofenceCallbackParams params) async {
       );
     }
   }
+
+  // 4. 発火済みフラグを SharedPreferences に保存する（バックグラウンド起動後の復元用）
+  await SharedPreferencesService.saveGeofencePendingAlert();
+
+  // 5. アプリが前面にある場合、UI isolate へ直接通知してダイアログを表示させる
+  final SendPort? uiPort = IsolateNameServer.lookupPortByName('geofence_alert_port');
+  uiPort?.send(null);
 }
 ```
 
@@ -684,11 +768,32 @@ Future<void> geofenceCallback(GeofenceCallbackParams params) async {
 
 **ファイル:** `lib/utility/shared_preferences_service.dart`
 
+**selectedStation グループ（選択駅の永続化）:**
+
 | メソッド名 | 引数 | 戻り値 | 説明 |
 |---|---|---|---|
 | `saveSelectedStation(String json)` | json | `Future<void>` | 選択駅のJSON文字列を保存する |
 | `loadSelectedStation()` | なし | `Future<String?>` | 選択駅のJSON文字列を読み込む |
 | `removeSelectedStation()` | なし | `Future<void>` | 選択駅を削除する |
+
+**geofencePendingAlert グループ（発火済みフラグ）:**
+
+| メソッド名 | 引数 | 戻り値 | 説明 |
+|---|---|---|---|
+| `saveGeofencePendingAlert()` | なし | `Future<void>` | ジオフェンス発火済みフラグ（`true`）を保存する |
+| `loadGeofencePendingAlert()` | なし | `Future<bool>` | ジオフェンス発火済みフラグを読み込む（未保存時は`false`） |
+| `clearGeofencePendingAlert()` | なし | `Future<void>` | ジオフェンス発火済みフラグを削除する |
+
+**キー定数:**
+
+| 定数名 | 値 | 用途 |
+|---|---|---|
+| `kGeofencePendingAlert` | `'geofence_pending_alert'` | 発火済みフラグのSharedPreferencesキー |
+
+> **フラグの保存タイミング:** `geofenceCallback`（バックグラウンドの別Isolate）内で `saveGeofencePendingAlert()` を呼び出す。
+> このコールバックはアプリの起動・終了状態に関係なく実行されるため、ユーザーがアプリを開いていなくても確実にフラグが記録される。
+>
+> **フラグの削除タイミング:** `GeofenceAlertDialog` の「画面タップ（停止）」コールバック内で `clearGeofencePendingAlert()` を呼び出す。
 
 ---
 
@@ -891,3 +996,4 @@ Android Emulator:
 | 版 | 日付 | 内容 |
 |---|---|---|
 | 1.0 | 2026-03-19 | 初版作成 |
+| 1.1 | 2026-04-05 | バックグラウンド発火時のダイアログ自動表示機能を追加。SharedPreferencesキーに`geofence_pending_alert`を追加。HomeScreenに`WidgetsBindingObserver`・`didChangeAppLifecycleState`・`_checkAndShowPendingGeofenceAlert()`・`_dummyFocusNode`を追加。geofenceCallbackに`saveGeofencePendingAlert()`呼び出しを追加。SharedPreferencesServiceにgeofencePendingAlertグループ3メソッドを追加 |
